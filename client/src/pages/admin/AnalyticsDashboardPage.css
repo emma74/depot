@@ -1,0 +1,23 @@
+.analytics-dashboard {
+  max-width: 1000px;
+}
+
+.analytics-section {
+  margin-bottom: var(--spacing-6);
+}
+
+.analytics-section h2 {
+  font-size: 1.1em;
+  margin-bottom: var(--spacing-3);
+}
+
+.analytics-card {
+  max-width: 480px;
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--spacing-4);
+  align-items: start;
+}

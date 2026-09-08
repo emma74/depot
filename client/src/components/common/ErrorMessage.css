@@ -1,0 +1,9 @@
+.error-message {
+  padding: var(--spacing-4);
+  margin: var(--spacing-4) 0;
+  border-radius: var(--radius);
+  background-color: #fef2f2;
+  color: var(--color-danger);
+  border: 1px solid #fecaca;
+  font-size: 0.9em;
+}

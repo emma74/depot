@@ -1,0 +1,44 @@
+.product-input__control {
+  position: relative;
+}
+
+.product-input__control input {
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+}
+.product-input__control input:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
+}
+
+.product-input__list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin: 0;
+  padding: var(--spacing-1) 0;
+  list-style: none;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.product-input__list li {
+  padding: var(--spacing-2) var(--spacing-3);
+  cursor: pointer;
+  color: var(--color-text);
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+.product-input__list li:hover,
+.product-input__list li:focus {
+  background-color: var(--color-bg);
+}
