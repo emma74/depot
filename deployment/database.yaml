@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: Zongo production PostgreSQL database
+
+Parameters:
+
+  DatabaseAMI:
+    Type: AWS::EC2::Image::Id
+    Description: Prepared Zongo PostgreSQL 17 AMI
+
+  DatabaseInstanceType:
+    Type: String
+    Default: t3.small
+
+  RootVolumeSize:
+    Type: Number
+    Default: 30
+    MinValue: 20
+
+  DataVolumeSize:
+    Type: Number
+    Default: 50
+    MinValue: 20
+
+
+Resources:
+  ############################################################
+  # POSTGRESQL SECURITY GROUP
+  ############################################################
+
+  PostgreSQLSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Zongo PostgreSQL security group
+      VpcId:
+        Fn::ImportValue: zongo-VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId:
+            Fn::ImportValue: zongo-ApplicationSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: zongo-postgresql-sg
+
+  ############################################################
+  # DATABASE INSTANCE ROLE
+  ############################################################
+
+  DatabaseInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: zongo-postgresql-instance-role
+
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+
+  DatabaseInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: zongo-postgresql-instance-profile
+      Roles:
+        - !Ref DatabaseInstanceRole
+
+
+  ############################################################
+  # DATABASE INSTANCE
+  ############################################################
+
+  DatabaseInstance:
+    Type: AWS::EC2::Instance
+
+    Properties:
+
+      ImageId: !Ref DatabaseAMI
+
+      InstanceType: !Ref DatabaseInstanceType
+
+      SubnetId: !ImportValue zongo-PrivateSubnetId
+
+      SecurityGroupIds:
+        - !Ref PostgreSQLSecurityGroup
+
+      IamInstanceProfile: !Ref DatabaseInstanceProfile
+
+      BlockDeviceMappings:
+
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: !Ref RootVolumeSize
+            Encrypted: true
+            DeleteOnTermination: true
+
+        - DeviceName: /dev/sdf
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: !Ref DataVolumeSize
+            Encrypted: true
+            DeleteOnTermination: false
+
+      Tags:
+        - Key: Name
+          Value: zongo-postgresql-prod
+
+
+Outputs:
+
+  DatabaseInstanceId:
+    Value: !Ref DatabaseInstance
+
+  DatabasePrivateIp:
+    Value: !GetAtt DatabaseInstance.PrivateIp
+
+  DatabaseRootVolumeSize:
+    Value: !Ref RootVolumeSize
+
+  DatabaseDataVolumeSize:
+    Value: !Ref DataVolumeSize

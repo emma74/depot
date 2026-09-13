@@ -1,0 +1,40 @@
+.modal__overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: var(--spacing-4);
+}
+
+.modal__content {
+  background-color: var(--color-surface);
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(15, 23, 42, 0.2);
+}
+
+.modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-4) var(--spacing-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.modal__close {
+  background: none;
+  border: none;
+  font-size: 1.4em;
+  line-height: 1;
+  color: var(--color-text-muted);
+}
+
+.modal__body {
+  padding: var(--spacing-5);
+}

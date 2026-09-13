@@ -1,0 +1,41 @@
+.meter__track {
+  height: 16px;
+  border-radius: 8px;
+  background-color: var(--chart-blue-track);
+  overflow: hidden;
+}
+
+.meter__fill {
+  height: 100%;
+  border-radius: 8px;
+  background-color: var(--chart-blue);
+  transition: width 0.4s ease;
+}
+.meter__fill--met {
+  background-color: var(--chart-good);
+}
+
+.meter__figures {
+  margin-top: var(--spacing-3);
+  font-size: 0.85em;
+}
+
+.meter__value {
+  font-size: 1.4em;
+  font-weight: 700;
+  color: var(--chart-text-primary);
+}
+
+.meter__of {
+  color: var(--chart-text-secondary);
+}
+
+.meter__percent {
+  margin-top: 2px;
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--chart-blue);
+}
+.meter__percent--met {
+  color: var(--chart-good);
+}

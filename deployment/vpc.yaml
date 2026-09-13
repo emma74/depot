@@ -1,0 +1,293 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  Zongo VPC with public and private subnets and
+  Systems Manager interface endpoints.
+
+Resources:
+
+  ############################################################
+  # VPC
+  ############################################################
+
+  ZongoVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+
+      Tags:
+        - Key: Name
+          Value: zongo-vpc
+
+
+  ############################################################
+  # Internet Gateway
+  ############################################################
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+    Properties:
+      Tags:
+        - Key: Name
+          Value: zongo-igw
+
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+
+    Properties:
+      VpcId: !Ref ZongoVPC
+      InternetGatewayId: !Ref InternetGateway
+
+
+  ############################################################
+  # Public subnet
+  ############################################################
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+
+    Properties:
+      VpcId: !Ref ZongoVPC
+
+      CidrBlock: 10.0.1.0/24
+
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: !Ref AWS::Region
+
+      MapPublicIpOnLaunch: true
+
+      Tags:
+        - Key: Name
+          Value: zongo-public-subnet
+
+
+  ############################################################
+  # Private subnet
+  ############################################################
+
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+
+    Properties:
+      VpcId: !Ref ZongoVPC
+
+      CidrBlock: 10.0.2.0/24
+
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: !Ref AWS::Region
+
+      MapPublicIpOnLaunch: false
+
+      Tags:
+        - Key: Name
+          Value: zongo-private-subnet
+
+
+  ############################################################
+  # Public route table
+  ############################################################
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+
+    Properties:
+      VpcId: !Ref ZongoVPC
+
+      Tags:
+        - Key: Name
+          Value: zongo-public-rt
+
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+
+    DependsOn:
+      - VPCGatewayAttachment
+
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+
+  ############################################################
+  # Private route table
+  #
+  # No default route.
+  # No NAT Gateway.
+  ############################################################
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+
+    Properties:
+      VpcId: !Ref ZongoVPC
+
+      Tags:
+        - Key: Name
+          Value: zongo-private-rt
+
+
+  PrivateSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+
+    Properties:
+      SubnetId: !Ref PrivateSubnet
+      RouteTableId: !Ref PrivateRouteTable
+
+
+  ############################################################
+  # SSM endpoint security group
+  ############################################################
+
+  SSMEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+
+    Properties:
+      GroupDescription: Allow Systems Manager HTTPS traffic
+      VpcId: !Ref ZongoVPC
+
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.0.2.0/24
+
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+      Tags:
+        - Key: Name
+          Value: zongo-ssm-endpoint-sg
+
+
+  ############################################################
+  # SSM endpoint
+  ############################################################
+
+  SSMEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+
+    Properties:
+      VpcId: !Ref ZongoVPC
+      VpcEndpointType: Interface
+
+      ServiceName:
+        !Sub com.amazonaws.${AWS::Region}.ssm
+
+      PrivateDnsEnabled: true
+
+      SubnetIds:
+        - !Ref PrivateSubnet
+
+      SecurityGroupIds:
+        - !Ref SSMEndpointSecurityGroup
+
+
+  ############################################################
+  # SSM Messages endpoint
+  ############################################################
+
+  SSMMessagesEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+
+    Properties:
+      VpcId: !Ref ZongoVPC
+      VpcEndpointType: Interface
+
+      ServiceName:
+        !Sub com.amazonaws.${AWS::Region}.ssmmessages
+
+      PrivateDnsEnabled: true
+
+      SubnetIds:
+        - !Ref PrivateSubnet
+
+      SecurityGroupIds:
+        - !Ref SSMEndpointSecurityGroup
+
+  ############################################################
+  # EC2 Messages endpoint
+  ############################################################
+
+  EC2MessagesEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+
+    Properties:
+      VpcId: !Ref ZongoVPC
+      VpcEndpointType: Interface
+
+      ServiceName:
+        !Sub com.amazonaws.${AWS::Region}.ec2messages
+
+      PrivateDnsEnabled: true
+
+      SubnetIds:
+        - !Ref PrivateSubnet
+
+      SecurityGroupIds:
+        - !Ref SSMEndpointSecurityGroup
+  ############################################################
+  # S3 Gateway endpoint
+  #
+  # Free — no hourly charge like interface endpoints.
+  # Required for dnf/yum package updates on instances
+  # in subnets with no NAT Gateway or internet route.
+  ############################################################
+
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+
+    Properties:
+      VpcId: !Ref ZongoVPC
+      VpcEndpointType: Gateway
+
+      ServiceName:
+        !Sub com.amazonaws.${AWS::Region}.s3
+
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+        - !Ref PublicRouteTable
+
+Outputs:
+
+  VpcId:
+    Description: Zongo VPC ID
+    Value: !Ref ZongoVPC
+    Export:
+      Name: zongo-VpcId
+
+  PublicSubnetId:
+    Description: Zongo public subnet ID
+    Value: !Ref PublicSubnet
+    Export:
+      Name: zongo-PublicSubnetId
+
+  PrivateSubnetId:
+    Description: Zongo private subnet ID
+    Value: !Ref PrivateSubnet
+    Export:
+      Name: zongo-PrivateSubnetId
+
+  SSMEndpointSecurityGroupId:
+    Description: Security group for SSM interface endpoints
+    Value: !Ref SSMEndpointSecurityGroup
+    Export:
+      Name: zongo-SSMEndpointSecurityGroupId

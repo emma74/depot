@@ -1,1 +1,3 @@
 *.md
+*/local_version
+*.docker-compose.yaml

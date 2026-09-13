@@ -1,0 +1,44 @@
+.line-chart__svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.line-chart__grid {
+  stroke: var(--chart-gridline);
+  stroke-width: 1;
+}
+
+.line-chart__axis {
+  stroke: var(--chart-baseline);
+  stroke-width: 1;
+}
+
+.line-chart__tick {
+  font-size: 9px;
+  fill: var(--chart-text-muted);
+}
+
+.line-chart__crosshair {
+  stroke: var(--chart-baseline);
+  stroke-width: 1;
+}
+
+.line-chart__path {
+  stroke: var(--chart-blue);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.line-chart__dot {
+  fill: var(--chart-blue);
+  stroke: var(--chart-surface);
+  stroke-width: 2;
+}
+
+.line-chart__end-label {
+  font-size: 10px;
+  font-weight: 700;
+  fill: var(--chart-text-primary);
+}

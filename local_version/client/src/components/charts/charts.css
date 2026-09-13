@@ -1,0 +1,73 @@
+.chart {
+  --chart-surface: #fcfcfb;
+  --chart-text-primary: #0b0b0b;
+  --chart-text-secondary: #52514e;
+  --chart-text-muted: #898781;
+  --chart-gridline: #e1e0d9;
+  --chart-baseline: #c3c2b7;
+  --chart-blue: #2a78d6;
+  --chart-blue-track: #cde2fb;
+  --chart-good: #0ca30c;
+  --chart-warning: #fab219;
+  --chart-critical: #d03b3b;
+
+  background-color: var(--chart-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--spacing-5);
+}
+
+:root[data-theme="dark"] .chart {
+  --chart-surface: #1e2129;
+  --chart-text-primary: #e5e7eb;
+  --chart-text-secondary: #b3b8c2;
+  --chart-text-muted: #9aa1ae;
+  --chart-gridline: #333743;
+  --chart-baseline: #454b58;
+  --chart-blue: #5a9cf0;
+  --chart-blue-track: #2a3547;
+  --chart-good: #34d058;
+  --chart-warning: #f5b73f;
+  --chart-critical: #f0605a;
+}
+
+.chart__title {
+  font-size: 0.95em;
+  font-weight: 600;
+  color: var(--chart-text-primary);
+  margin-bottom: var(--spacing-1);
+}
+
+.chart__subtitle {
+  font-size: 0.8em;
+  color: var(--chart-text-secondary);
+  margin-bottom: var(--spacing-4);
+}
+
+.chart__empty {
+  padding: var(--spacing-5) 0;
+  text-align: center;
+  color: var(--chart-text-muted);
+  font-size: 0.85em;
+}
+
+/* Tooltip, shared by bar + line charts */
+.chart__tooltip {
+  position: absolute;
+  pointer-events: none;
+  background-color: var(--chart-text-primary);
+  color: #fff;
+  font-size: 0.78em;
+  padding: 6px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  transform: translate(-50%, -100%);
+  z-index: 10;
+}
+.chart__tooltip-value {
+  font-weight: 700;
+}
+.chart__tooltip-label {
+  color: rgba(255, 255, 255, 0.75);
+  margin-left: 4px;
+}

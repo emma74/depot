@@ -17,7 +17,6 @@ import profitandlossRoutes from './routes/profitandlossRoutes.js';
 import targetRoutes from './routes/targetRoutes.js';
 import prodtotalRoutes from './routes/prodtotalRoutes.js';
 import debitRoutes from './routes/debitRoutes.js';
-import healthRoutes from './routes/healthRoutes.js';
 import { authMiddleware, requireAdmin, requireAdminForWrite } from './middleware/authMiddleware.js';
 
 const app = express();
@@ -26,7 +25,6 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 app.use('/auth', authRoutes);
-app.use('/health', healthRoutes);
 app.use('/api/customers', authMiddleware, requireAdmin, customerRoutes);
 app.use('/api/users', authMiddleware, userRoutes )
 app.use('/api/employees', authMiddleware, requireAdminForWrite, employeeRoutes);

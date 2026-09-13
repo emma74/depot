@@ -1,0 +1,192 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  Zongo ECS application task definition and service.
+
+Parameters:
+
+  ClientImage:
+    Type: String
+    Description: Full ECR URI of the Zongo client image.
+
+  ServerImage:
+    Type: String
+    Description: Full ECR URI of the Zongo server image.
+
+
+Resources:
+
+  ############################################################
+  # ECS Task Definition
+  ############################################################
+
+  ZongoTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+
+    Properties:
+
+      Family: zongo
+
+      NetworkMode: host
+
+      RequiresCompatibilities:
+        - EC2
+
+      ExecutionRoleArn:
+        Fn::ImportValue: zongo-ECSTaskExecutionRoleArn
+
+      TaskRoleArn:
+        Fn::ImportValue: zongo-ECSTaskRoleArn
+
+      ContainerDefinitions:
+
+        ########################################################
+        # NODE / API SERVER
+        ########################################################
+
+        - Name: zongo-server
+
+          Image: !Ref ServerImage
+
+          Essential: true
+
+          MemoryReservation: 256
+
+          PortMappings:
+
+            - ContainerPort: 3000
+              HostPort: 3000
+              Protocol: tcp
+
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - "curl -f http://localhost:3000/health || exit 1"
+            Interval: 15
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 30
+
+          Environment:
+
+            - Name: NODE_ENV
+              Value: production
+
+            - Name: PORT
+              Value: '3000'
+
+          Secrets:
+
+            - Name: DATABASE_URL
+              ValueFrom:
+                !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/zongo/prod/database/connection'
+
+          LogConfiguration:
+            LogDriver: awslogs
+
+            Options:
+
+              awslogs-group:
+                Fn::ImportValue: zongo-ApplicationLogGroup
+
+              awslogs-region: !Ref AWS::Region
+
+              awslogs-stream-prefix: server
+
+
+        ########################################################
+        # NGINX / CLIENT
+        ########################################################
+
+        - Name: zongo-client
+
+          Image: !Ref ClientImage
+
+          Essential: true
+
+          MemoryReservation: 128
+
+          DependsOn:
+
+            - ContainerName: zongo-server
+              Condition: HEALTHY
+
+          PortMappings:
+
+            - ContainerPort: 80
+              HostPort: 80
+              Protocol: tcp
+
+            - ContainerPort: 443
+              HostPort: 443
+              Protocol: tcp
+
+          MountPoints:
+
+            - SourceVolume: nginx-certs
+              ContainerPath: /etc/nginx/certs
+              ReadOnly: true
+
+          LogConfiguration:
+            LogDriver: awslogs
+
+            Options:
+
+              awslogs-group:
+                Fn::ImportValue: zongo-ApplicationLogGroup
+
+              awslogs-region: !Ref AWS::Region
+
+              awslogs-stream-prefix: client
+
+
+      ########################################################
+      # Host directory on ECS EC2
+      ########################################################
+
+      Volumes:
+
+        - Name: nginx-certs
+
+          Host:
+            SourcePath: /opt/zongo/certs
+
+
+  ############################################################
+  # ECS Service
+  ############################################################
+
+  ZongoService:
+    Type: AWS::ECS::Service
+
+    Properties:
+
+      ServiceName: zongo
+
+      Cluster:
+        Fn::ImportValue: zongo-ECSCluster
+
+      LaunchType: EC2
+
+      DesiredCount: 1
+
+      EnableExecuteCommand: true
+
+      TaskDefinition: !Ref ZongoTaskDefinition
+
+      DeploymentConfiguration:
+
+        MinimumHealthyPercent: 0
+
+        MaximumPercent: 100
+
+
+Outputs:
+
+  TaskDefinition:
+    Description: Zongo ECS task definition
+    Value: !Ref ZongoTaskDefinition
+
+  Service:
+    Description: Zongo ECS service
+    Value: !Ref ZongoService
