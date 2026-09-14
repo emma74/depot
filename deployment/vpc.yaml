@@ -167,7 +167,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
-          CidrIp: 10.0.2.0/24
+          CidrIp: 10.0.0.0/16
 
       SecurityGroupEgress:
         - IpProtocol: -1

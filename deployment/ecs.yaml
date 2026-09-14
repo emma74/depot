@@ -81,6 +81,10 @@ Resources:
               ValueFrom:
                 !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/zongo/prod/database/connection'
 
+            - Name: JWT_SECRET
+              ValueFrom:
+                !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/zongo/prod/jwt/secret'
+
           LogConfiguration:
             LogDriver: awslogs
 

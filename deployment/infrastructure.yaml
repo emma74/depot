@@ -1,4 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
+
 Description: >
   Zongo application infrastructure including ECS EC2,
   ECR repositories, security groups, IAM roles, logging,
@@ -8,11 +9,13 @@ Parameters:
   ECSInstanceType:
     Type: String
     Default: t3.small
+
   ECSAMI:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id
 
 Resources:
+
   ############################################################
   # ECS Cluster
   ############################################################
@@ -28,20 +31,25 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Zongo application security group
+
       VpcId:
         Fn::ImportValue: zongo-VpcId
+
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
           CidrIp: 0.0.0.0/0
+
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
           CidrIp: 0.0.0.0/0
+
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
+
       Tags:
         - Key: Name
           Value: zongo-application-sg
@@ -59,18 +67,22 @@ Resources:
   ############################################################
   CertificateBucket:
     Type: AWS::S3::Bucket
+
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
+
     Properties:
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced
@@ -82,52 +94,72 @@ Resources:
   ############################################################
   CertificateBucketPolicy:
     Type: AWS::S3::BucketPolicy
+
     Properties:
       Bucket: !Ref CertificateBucket
+
       PolicyDocument:
         Version: '2012-10-17'
+
         Statement:
           - Sid: DenyInsecureTransport
             Effect: Deny
             Principal: '*'
             Action: 's3:*'
+
             Resource:
               - !GetAtt CertificateBucket.Arn
               - !Sub '${CertificateBucket.Arn}/*'
+
             Condition:
               Bool:
                 aws:SecureTransport: 'false'
 
   ############################################################
   # ECS EC2 IAM Role
+  #
+  # TEMPORARY:
+  # s3:PutObject is required to upload the TLS certificates
+  # from the ECS EC2 instance.
+  #
+  # Remove s3:PutObject after the certificates are uploaded.
   ############################################################
   ECSInstanceRole:
     Type: AWS::IAM::Role
+
     Properties:
       RoleName: !Sub '${AWS::StackName}-ECSInstanceRole'
+
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
+
         Statement:
           - Effect: Allow
+
             Principal:
               Service:
                 - ec2.amazonaws.com
+
             Action:
               - sts:AssumeRole
+
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-      ########################################################
-      # Read-only access to certificate objects
-      ########################################################
+
       Policies:
         - PolicyName: ReadZongoCertificates
+
           PolicyDocument:
             Version: '2012-10-17'
+
             Statement:
               - Effect: Allow
+
                 Action:
                   - s3:GetObject
+                  - s3:PutObject
+
                 Resource:
                   - !Sub '${CertificateBucket.Arn}/prod/server.crt'
                   - !Sub '${CertificateBucket.Arn}/prod/server.key'
@@ -137,8 +169,10 @@ Resources:
   ############################################################
   ECSInstanceProfile:
     Type: AWS::IAM::InstanceProfile
+
     Properties:
       InstanceProfileName: !Sub '${AWS::StackName}-ECSInstanceProfile'
+
       Roles:
         - !Ref ECSInstanceRole
 
@@ -147,17 +181,23 @@ Resources:
   ############################################################
   ECSInstance:
     Type: AWS::EC2::Instance
+
     Properties:
       ImageId: !Ref ECSAMI
       InstanceType: !Ref ECSInstanceType
+
       SubnetId:
         Fn::ImportValue: zongo-PublicSubnetId
+
       SecurityGroupIds:
         - !Ref ApplicationSecurityGroup
+
       IamInstanceProfile: !Ref ECSInstanceProfile
+
       Tags:
         - Key: Name
           Value: zongo-ecs-host
+
       UserData:
         Fn::Base64:
           !Sub |
@@ -165,8 +205,8 @@ Resources:
             set -e
 
             #################################################
-            # Cron job — runs regardless of what happens s3 #
-            # Copy command for certificates                 #                       
+            # Cron job — runs regardless of what happens
+            # with the S3 certificate copy commands.
             #################################################
             cat > /etc/cron.d/docker-prune <<'EOF'
             0 3 * * 0 root docker image prune -af --filter "until=168h" >> /var/log/docker-prune.log 2>&1
@@ -223,16 +263,20 @@ Resources:
   ############################################################
   ECSInstanceEIP:
     Type: AWS::EC2::EIP
+
     Properties:
       Domain: vpc
+
       Tags:
         - Key: Name
           Value: zongo-ecs-eip
 
   ECSInstanceEIPAssociation:
     Type: AWS::EC2::EIPAssociation
+
     Properties:
       InstanceId: !Ref ECSInstance
+
       AllocationId: !GetAtt ECSInstanceEIP.AllocationId
 
   ############################################################
@@ -240,8 +284,10 @@ Resources:
   ############################################################
   ClientRepository:
     Type: AWS::ECR::Repository
+
     Properties:
       RepositoryName: zongo-client
+
       ImageScanningConfiguration:
         ScanOnPush: true
 
@@ -250,8 +296,10 @@ Resources:
   ############################################################
   ServerRepository:
     Type: AWS::ECR::Repository
+
     Properties:
       RepositoryName: zongo-server
+
       ImageScanningConfiguration:
         ScanOnPush: true
 
@@ -260,6 +308,7 @@ Resources:
   ############################################################
   ApplicationLogGroup:
     Type: AWS::Logs::LogGroup
+
     Properties:
       LogGroupName: /zongo/application
       RetentionInDays: 30
@@ -269,31 +318,44 @@ Resources:
   ############################################################
   ECSTaskExecutionRole:
     Type: AWS::IAM::Role
+
     Properties:
       RoleName: !Sub '${AWS::StackName}-ECSTaskExecutionRole'
+
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
+
         Statement:
           - Effect: Allow
+
             Principal:
               Service:
                 - ecs-tasks.amazonaws.com
+
             Action:
               - sts:AssumeRole
+
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
       Policies:
         - PolicyName: ReadDatabaseConnectionParameter
+
           PolicyDocument:
             Version: '2012-10-17'
+
             Statement:
               - Effect: Allow
+
                 Action:
                   - ssm:GetParameter
                   - ssm:GetParameters
+
                 Resource:
                   - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/zongo/prod/database/connection'
-
+                  - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/zongo/prod/jwt/secret'
+          
+          
   ############################################################
   # ECS Task Role
   #
@@ -301,40 +363,53 @@ Resources:
   ############################################################
   ECSTaskRole:
     Type: AWS::IAM::Role
+
     Properties:
       RoleName: !Sub '${AWS::StackName}-ECSTaskRole'
+
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
+
         Statement:
           - Effect: Allow
+
             Principal:
               Service:
                 - ecs-tasks.amazonaws.com
+
             Action:
               - sts:AssumeRole
+
       Policies:
         - PolicyName: ECSExecAccess
+
           PolicyDocument:
             Version: '2012-10-17'
+
             Statement:
               - Effect: Allow
+
                 Action:
                   - ssmmessages:CreateControlChannel
                   - ssmmessages:CreateDataChannel
                   - ssmmessages:OpenControlChannel
                   - ssmmessages:OpenDataChannel
+
                 Resource: '*'
 
 Outputs:
+
   ECSCluster:
     Description: ECS cluster
     Value: !Ref ECSCluster
+
     Export:
       Name: zongo-ECSCluster
 
   ApplicationSecurityGroup:
     Description: Application security group
     Value: !Ref ApplicationSecurityGroup
+
     Export:
       Name: zongo-ApplicationSecurityGroup
 
@@ -349,35 +424,41 @@ Outputs:
   ClientRepositoryUri:
     Description: Client ECR repository URI
     Value: !GetAtt ClientRepository.RepositoryUri
+
     Export:
       Name: zongo-ClientRepositoryUri
 
   ServerRepositoryUri:
     Description: Server ECR repository URI
     Value: !GetAtt ServerRepository.RepositoryUri
+
     Export:
       Name: zongo-ServerRepositoryUri
 
   ApplicationLogGroup:
     Description: CloudWatch application log group
     Value: !Ref ApplicationLogGroup
+
     Export:
       Name: zongo-ApplicationLogGroup
 
   ECSTaskExecutionRoleArn:
     Description: ECS task execution role ARN
     Value: !GetAtt ECSTaskExecutionRole.Arn
+
     Export:
       Name: zongo-ECSTaskExecutionRoleArn
 
   ECSTaskRoleArn:
     Description: ECS task role ARN
     Value: !GetAtt ECSTaskRole.Arn
+
     Export:
       Name: zongo-ECSTaskRoleArn
 
   CertificateBucketName:
     Description: S3 bucket containing Zongo TLS certificates
     Value: !Ref CertificateBucket
+
     Export:
       Name: zongo-CertificateBucketName
