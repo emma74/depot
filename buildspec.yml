@@ -9,32 +9,19 @@ phases:
 
   pre_build:
     commands:
-
       - echo "Logging in to Amazon ECR..."
-
       - AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-
       - ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
-
-      - aws ecr get-login-password --region "${AWS_DEFAULT_REGION}" |
-        docker login
-        --username AWS
-        --password-stdin "${ECR_REGISTRY}"
-
-      # Use the Git commit ID as the image tag.
+      - aws ecr get-login-password --region "${AWS_DEFAULT_REGION}" | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
       - IMAGE_TAG="${CODEBUILD_RESOLVED_SOURCE_VERSION}"
-
       - CLIENT_IMAGE="${ECR_REGISTRY}/zongo-client:${IMAGE_TAG}"
-
       - SERVER_IMAGE="${ECR_REGISTRY}/zongo-server:${IMAGE_TAG}"
-
       - echo "Client image: ${CLIENT_IMAGE}"
       - echo "Server image: ${SERVER_IMAGE}"
 
 
   build:
     commands:
-
       - echo "Building Zongo client image..."
       - docker build -t "${CLIENT_IMAGE}" ./client
 
