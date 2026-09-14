@@ -242,6 +242,7 @@ Resources:
       EventPattern:
         source:
           - aws.codestar-connections
+          - aws.codeconnections
         detail-type:
           - CodeStar Connections Repository State Change
         resources:
