@@ -230,7 +230,64 @@ Resources:
                   - !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/zongo-client'
                   - !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/zongo-server'
 
+  ############################################################
+  # EventBridge rule — triggers pipeline on GitHub push
+  ############################################################
 
+  PipelineTriggerRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${AWS::StackName}-SourceTrigger'
+      Description: Triggers the pipeline when the GitHub connection reports a repository change
+      EventPattern:
+        source:
+          - aws.codestar-connections
+        detail-type:
+          - CodeStar Connections Repository State Change
+        resources:
+          - !Ref GitHubConnectionArn
+        detail:
+          event:
+            - referenceUpdated
+          referenceType:
+            - branch
+          referenceName:
+            - !Ref GitHubBranch
+      State: ENABLED
+      Targets:
+        - Id: PipelineTarget
+          Arn: !Sub 'arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${Pipeline}'
+          RoleArn: !GetAtt EventBridgeInvokeRole.Arn
+
+
+  ############################################################
+  # EventBridge invoke role
+  ############################################################
+
+  EventBridgeInvokeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-EventBridgeInvokeRole'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - events.amazonaws.com
+            Action:
+              - sts:AssumeRole
+
+      Policies:
+        - PolicyName: StartPipelineExecution
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - codepipeline:StartPipelineExecution
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${Pipeline}'
   ############################################################
   # CodeBuild project
   ############################################################
