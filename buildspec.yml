@@ -16,8 +16,8 @@ phases:
       - IMAGE_TAG="${CODEBUILD_RESOLVED_SOURCE_VERSION}"
       - CLIENT_IMAGE="${ECR_REGISTRY}/zongo-client:${IMAGE_TAG}"
       - SERVER_IMAGE="${ECR_REGISTRY}/zongo-server:${IMAGE_TAG}"
-      - echo "Client image: ${CLIENT_IMAGE}"
-      - echo "Server image: ${SERVER_IMAGE}"
+      - 'echo "Client image: ${CLIENT_IMAGE}"'
+      - 'echo "Server image: ${SERVER_IMAGE}"'
 
 
   build:
@@ -25,8 +25,8 @@ phases:
       - echo "Building Zongo client image..."
       - docker build -t "${CLIENT_IMAGE}" ./client
 
-      - echo "Building Zongo server image..."
-      - docker build -t "${SERVER_IMAGE}" ./server
+      - 'echo "Building Zongo server image..."'
+      - 'docker build -t "${SERVER_IMAGE}" ./server'
 
 
   post_build:
