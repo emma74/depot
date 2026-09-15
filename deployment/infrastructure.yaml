@@ -202,15 +202,6 @@ Resources:
         Fn::Base64:
           !Sub |
             #!/bin/bash
-            set -e
-
-            #################################################
-            # Cron job — runs regardless of what happens
-            # with the S3 certificate copy commands.
-            #################################################
-            cat > /etc/cron.d/docker-prune <<'EOF'
-            0 3 * * 0 root docker image prune -af --filter "until=168h" >> /var/log/docker-prune.log 2>&1
-            EOF
 
             ####################################################
             # Certificate directory
@@ -220,43 +211,110 @@ Resources:
 
             ####################################################
             # Download TLS certificate and private key
-            #
-            # ECS agent is NOT started until these files
-            # have been successfully downloaded.
+            # Correct filenames matching nginx.conf expectations
             ####################################################
-            aws s3 cp \
-              s3://${CertificateBucket}/prod/server.crt \
-              /opt/zongo/certs/server.crt
-
-            aws s3 cp \
-              s3://${CertificateBucket}/prod/server.key \
-              /opt/zongo/certs/server.key
-
-            ####################################################
-            # Certificate permissions
-            ####################################################
-            chown root:root \
-              /opt/zongo/certs/server.crt \
-              /opt/zongo/certs/server.key
-
-            chmod 644 \
-              /opt/zongo/certs/server.crt
-
-            chmod 600 \
-              /opt/zongo/certs/server.key
+            if aws s3 cp s3://${CertificateBucket}/prod/fullchain.pem /opt/zongo/certs/fullchain.pem && \
+               aws s3 cp s3://${CertificateBucket}/prod/privkey.pem /opt/zongo/certs/privkey.pem; then
+              chown root:root /opt/zongo/certs/fullchain.pem /opt/zongo/certs/privkey.pem
+              chmod 644 /opt/zongo/certs/fullchain.pem
+              chmod 600 /opt/zongo/certs/privkey.pem
+              echo "$(date) Certificates downloaded successfully" >> /var/log/zongo-bootstrap.log
+            else
+              echo "$(date) WARNING: certificate download failed — provision manually" >> /var/log/zongo-bootstrap.log
+            fi
 
             ####################################################
             # ECS configuration
             ####################################################
-            cat > /etc/ecs/ecs.config <<'EOF'
+            cat > /etc/ecs/ecs.config <<'ECSEOF'
             ECS_CLUSTER=zongo-prod
             ECS_ENABLE_CONTAINER_METADATA=true
-            EOF
+            ECSEOF
 
             ####################################################
-            # Start ECS agent only after certificates exist
+            # Start ECS agent only if certs exist
             ####################################################
-            systemctl enable --now ecs
+            if [ -f /opt/zongo/certs/fullchain.pem ] && [ -f /opt/zongo/certs/privkey.pem ]; then
+              systemctl enable --now ecs
+            else
+              echo "$(date) ECS agent not started — certs missing" >> /var/log/zongo-bootstrap.log
+            fi
+
+            ####################################################
+            # Install cron for systemd timers
+            ####################################################
+
+            cat > /usr/local/bin/renew-zongo-cert.sh <<'RENEWEOF'
+            #!/bin/bash
+            set -e
+
+            certbot renew --quiet
+
+            if [ -f /etc/letsencrypt/live/zongosupermarket.com/fullchain.pem ]; then
+              aws s3 cp /etc/letsencrypt/live/zongosupermarket.com/fullchain.pem s3://${CertificateBucket}/prod/fullchain.pem
+              aws s3 cp /etc/letsencrypt/live/zongosupermarket.com/privkey.pem s3://${CertificateBucket}/prod/privkey.pem
+
+              cp /etc/letsencrypt/live/zongosupermarket.com/fullchain.pem /opt/zongo/certs/fullchain.pem
+              cp /etc/letsencrypt/live/zongosupermarket.com/privkey.pem /opt/zongo/certs/privkey.pem
+
+              chown root:root /opt/zongo/certs/fullchain.pem /opt/zongo/certs/privkey.pem
+              chmod 644 /opt/zongo/certs/fullchain.pem
+              chmod 600 /opt/zongo/certs/privkey.pem
+
+              TASK_ARN=$(aws ecs list-tasks --cluster zongo-prod --service-name zongo --query "taskArns[0]" --output text)
+              if [ "$TASK_ARN" != "None" ]; then
+                aws ecs stop-task --cluster zongo-prod --task "$TASK_ARN" --reason "cert renewal"
+              fi
+            fi
+            RENEWEOF
+
+            chmod +x /usr/local/bin/renew-zongo-cert.sh
+
+            cat > /etc/systemd/system/zongo-cert-renew.service <<'SVCEOF'
+            [Unit]
+            Description=Renew Zongo TLS certificate
+
+            [Service]
+            Type=oneshot
+            ExecStart=/usr/local/bin/renew-zongo-cert.sh
+            SVCEOF
+
+            cat > /etc/systemd/system/zongo-cert-renew.timer <<'TIMEREOF'
+            [Unit]
+            Description=Weekly Zongo cert renewal check
+
+            [Timer]
+            OnCalendar=Mon *-*-* 03:00:00
+            Persistent=true
+
+            [Install]
+            WantedBy=timers.target
+            TIMEREOF
+
+            cat > /etc/systemd/system/zongo-docker-prune.service <<'PRUNEEOF'
+            [Unit]
+            Description=Prune unused Docker images
+
+            [Service]
+            Type=oneshot
+            ExecStart=/usr/bin/docker image prune -af --filter "until=168h"
+            PRUNEEOF
+
+            cat > /etc/systemd/system/zongo-docker-prune.timer <<'PRUNETIMEREOF'
+            [Unit]
+            Description=Weekly Docker image prune
+
+            [Timer]
+            OnCalendar=Sun *-*-* 03:00:00
+            Persistent=true
+
+            [Install]
+            WantedBy=timers.target
+            PRUNETIMEREOF
+
+            systemctl daemon-reload
+            systemctl enable --now zongo-cert-renew.timer
+            systemctl enable --now zongo-docker-prune.timer
 
   ############################################################
   # Elastic IP for ECS EC2
