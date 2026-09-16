@@ -61,8 +61,8 @@ Resources:
   #
   # Objects to upload:
   #
-  #   prod/server.crt
-  #   prod/server.key
+  #   prod/fullchain.pem
+  #   prod/privkey.pem
   #
   ############################################################
   CertificateBucket:
@@ -161,8 +161,33 @@ Resources:
                   - s3:PutObject
 
                 Resource:
-                  - !Sub '${CertificateBucket.Arn}/prod/server.crt'
-                  - !Sub '${CertificateBucket.Arn}/prod/server.key'
+                  - !Sub '${CertificateBucket.Arn}/prod/fullchain.pem'
+                  - !Sub '${CertificateBucket.Arn}/prod/privkey.pem'
+
+        - PolicyName: RenewZongoCertRestart
+          # Lets renew-zongo-cert.sh find and stop the running zongo task after
+          # uploading a renewed cert, so ECS reschedules a fresh nginx container
+          # that picks up the new files from the /opt/zongo/certs host mount.
+
+          PolicyDocument:
+            Version: '2012-10-17'
+
+            Statement:
+              - Effect: Allow
+
+                Action:
+                  - ecs:ListTasks
+
+                Resource:
+                  - !GetAtt ECSCluster.Arn
+
+              - Effect: Allow
+
+                Action:
+                  - ecs:StopTask
+
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task/${ECSCluster}/*'
 
   ############################################################
   # ECS Instance Profile
