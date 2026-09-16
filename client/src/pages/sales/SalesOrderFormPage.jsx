@@ -13,7 +13,7 @@ export default function SalesOrderFormPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [orderNumber, setOrderNumber] = useState('');
+  const [orderNumber, setOrderNumber] = useState('SO-');
   const [orderDate, setOrderDate] = useState('');
   const [orderType, setOrderType] = useState('CUSTOMER');
   const [customerId, setCustomerId] = useState('');
