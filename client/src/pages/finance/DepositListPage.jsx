@@ -31,16 +31,26 @@ export default function DepositListPage() {
   const [date, setDate] = useState('');
   const [formError, setFormError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+
+  const resetForm = () => {
+    setCash('');
+    setCheck('');
+    setDate('');
+    setEditingId(null);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     setFormError(null);
     try {
-      await depositService.create({ cash, check, date });
-      setCash('');
-      setCheck('');
-      setDate('');
+      if (editingId) {
+        await depositService.update(editingId, { cash, check, date });
+      } else {
+        await depositService.create({ cash, check, date });
+      }
+      resetForm();
       reload();
     } catch (err) {
       setFormError(err.response?.data?.error || err.message);
@@ -49,8 +59,16 @@ export default function DepositListPage() {
     }
   };
 
+  const handleEdit = (row) => {
+    setEditingId(row.id);
+    setCash(String(row.cash));
+    setCheck(String(row.check));
+    setDate(row.date.slice(0, 10));
+  };
+
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this deposit?')) return;
+    if (editingId === id) resetForm();
     await depositService.remove(id);
     reload();
   };
@@ -67,13 +85,18 @@ export default function DepositListPage() {
       </div>
 
       <div className="detail-section">
-        <h2>Record a deposit</h2>
+        <h2>{editingId ? 'Edit deposit' : 'Record a deposit'}</h2>
         {formError && <ErrorMessage message={formError} />}
         <form onSubmit={handleSubmit} className="page-filters">
           <FormField label="Cash" name="cash" type="number" step="0.01" value={cash} onChange={(e) => setCash(e.target.value)} required />
           <FormField label="Check" name="check" type="number" step="0.01" value={check} onChange={(e) => setCheck(e.target.value)} />
           <FormField label="Date" name="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
-          <Button type="submit" disabled={submitting}>{submitting ? 'Saving…' : 'Add Deposit'}</Button>
+          <Button type="submit" disabled={submitting}>
+            {submitting ? 'Saving…' : editingId ? 'Save Changes' : 'Add Deposit'}
+          </Button>
+          {editingId && (
+            <Button type="button" variant="secondary" onClick={resetForm}>Cancel</Button>
+          )}
         </form>
       </div>
 
@@ -115,7 +138,10 @@ export default function DepositListPage() {
                 key: 'actions',
                 label: '',
                 render: (row) => (
-                  <Button variant="danger" onClick={() => handleDelete(row.id)}>Delete</Button>
+                  <div style={{ display: 'flex', gap: 'var(--spacing-2)' }}>
+                    <Button variant="secondary" onClick={() => handleEdit(row)}>Edit</Button>
+                    <Button variant="danger" onClick={() => handleDelete(row.id)}>Delete</Button>
+                  </div>
                 ),
               },
             ]}

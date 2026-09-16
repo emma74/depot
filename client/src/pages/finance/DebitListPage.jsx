@@ -32,17 +32,27 @@ export default function DebitListPage() {
   const [amount, setAmount] = useState('');
   const [formError, setFormError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+
+  const resetForm = () => {
+    setDate('');
+    setDescription('');
+    setCheckNumber('');
+    setAmount('');
+    setEditingId(null);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     setFormError(null);
     try {
-      await debitService.create({ date, description, checkNumber, amount });
-      setDate('');
-      setDescription('');
-      setCheckNumber('');
-      setAmount('');
+      if (editingId) {
+        await debitService.update(editingId, { date, description, checkNumber, amount });
+      } else {
+        await debitService.create({ date, description, checkNumber, amount });
+      }
+      resetForm();
       reload();
     } catch (err) {
       setFormError(err.response?.data?.error || err.message);
@@ -51,8 +61,17 @@ export default function DebitListPage() {
     }
   };
 
+  const handleEdit = (row) => {
+    setEditingId(row.id);
+    setDate(row.date.slice(0, 10));
+    setDescription(row.description);
+    setCheckNumber(String(row.checkNumber ?? ''));
+    setAmount(String(row.amount));
+  };
+
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this debit?')) return;
+    if (editingId === id) resetForm();
     await debitService.remove(id);
     reload();
   };
@@ -69,14 +88,19 @@ export default function DebitListPage() {
       </div>
 
       <div className="detail-section">
-        <h2>Record a debit</h2>
+        <h2>{editingId ? 'Edit debit' : 'Record a debit'}</h2>
         {formError && <ErrorMessage message={formError} />}
         <form onSubmit={handleSubmit} className="page-filters">
           <FormField label="Date" name="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
           <FormField label="Description" name="description" value={description} onChange={(e) => setDescription(e.target.value)} required />
           <FormField label="Check number" name="checkNumber" type="number" value={checkNumber} onChange={(e) => setCheckNumber(e.target.value)} required />
           <FormField label="Amount" name="amount" type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
-          <Button type="submit" disabled={submitting}>{submitting ? 'Saving…' : 'Add Debit'}</Button>
+          <Button type="submit" disabled={submitting}>
+            {submitting ? 'Saving…' : editingId ? 'Save Changes' : 'Add Debit'}
+          </Button>
+          {editingId && (
+            <Button type="button" variant="secondary" onClick={resetForm}>Cancel</Button>
+          )}
         </form>
       </div>
 
@@ -112,7 +136,16 @@ export default function DebitListPage() {
               { key: 'description', label: 'Description' },
               { key: 'checkNumber', label: 'Check #', render: (row) => row.checkNumber ?? '—' },
               { key: 'amount', label: 'Amount', render: (row) => formatCurrency(row.amount) },
-              { key: 'actions', label: '', render: (row) => <Button variant="danger" onClick={() => handleDelete(row.id)}>Delete</Button> },
+              {
+                key: 'actions',
+                label: '',
+                render: (row) => (
+                  <div style={{ display: 'flex', gap: 'var(--spacing-2)' }}>
+                    <Button variant="secondary" onClick={() => handleEdit(row)}>Edit</Button>
+                    <Button variant="danger" onClick={() => handleDelete(row.id)}>Delete</Button>
+                  </div>
+                ),
+              },
             ]}
             rows={data.debits}
             emptyMessage="No debits recorded in this date range."

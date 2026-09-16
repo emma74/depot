@@ -33,16 +33,26 @@ export default function OtherIncomeListPage() {
   const [incomeDate, setIncomeDate] = useState('');
   const [formError, setFormError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+
+  const resetForm = () => {
+    setDescription('');
+    setAmount('');
+    setIncomeDate('');
+    setEditingId(null);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     setFormError(null);
     try {
-      await otherIncomeService.create({ description, amount, incomeDate, userId: user.id });
-      setDescription('');
-      setAmount('');
-      setIncomeDate('');
+      if (editingId) {
+        await otherIncomeService.update(editingId, { description, amount, incomeDate });
+      } else {
+        await otherIncomeService.create({ description, amount, incomeDate, userId: user.id });
+      }
+      resetForm();
       reload();
     } catch (err) {
       setFormError(err.response?.data?.error || err.message);
@@ -51,8 +61,16 @@ export default function OtherIncomeListPage() {
     }
   };
 
+  const handleEdit = (row) => {
+    setEditingId(row.id);
+    setDescription(row.description);
+    setAmount(String(row.amount));
+    setIncomeDate(row.incomeDate.slice(0, 10));
+  };
+
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this income entry?')) return;
+    if (editingId === id) resetForm();
     await otherIncomeService.remove(id);
     reload();
   };
@@ -69,13 +87,18 @@ export default function OtherIncomeListPage() {
       </div>
 
       <div className="detail-section">
-        <h2>Record other income</h2>
+        <h2>{editingId ? 'Edit income entry' : 'Record other income'}</h2>
         {formError && <ErrorMessage message={formError} />}
         <form onSubmit={handleSubmit} className="page-filters">
           <FormField label="Description" name="description" value={description} onChange={(e) => setDescription(e.target.value)} required />
           <FormField label="Amount" name="amount" type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
           <FormField label="Date" name="incomeDate" type="date" value={incomeDate} onChange={(e) => setIncomeDate(e.target.value)} required />
-          <Button type="submit" disabled={submitting}>{submitting ? 'Saving…' : 'Add Income'}</Button>
+          <Button type="submit" disabled={submitting}>
+            {submitting ? 'Saving…' : editingId ? 'Save Changes' : 'Add Income'}
+          </Button>
+          {editingId && (
+            <Button type="button" variant="secondary" onClick={resetForm}>Cancel</Button>
+          )}
         </form>
       </div>
 
@@ -109,7 +132,16 @@ export default function OtherIncomeListPage() {
               { key: 'incomeDate', label: 'Date', render: (row) => formatDate(row.incomeDate) },
               { key: 'description', label: 'Description' },
               { key: 'amount', label: 'Amount', render: (row) => formatCurrency(row.amount) },
-              { key: 'actions', label: '', render: (row) => <Button variant="danger" onClick={() => handleDelete(row.id)}>Delete</Button> },
+              {
+                key: 'actions',
+                label: '',
+                render: (row) => (
+                  <div style={{ display: 'flex', gap: 'var(--spacing-2)' }}>
+                    <Button variant="secondary" onClick={() => handleEdit(row)}>Edit</Button>
+                    <Button variant="danger" onClick={() => handleDelete(row.id)}>Delete</Button>
+                  </div>
+                ),
+              },
             ]}
             rows={data.income}
             emptyMessage="No other income recorded in this date range."

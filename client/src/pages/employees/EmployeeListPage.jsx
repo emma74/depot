@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useApi } from '../../hooks/useApi';
 import { employeeService } from '../../services/employeeService';
@@ -10,6 +10,7 @@ import './EmployeeListPage.css';
 
 export default function EmployeeListPage() {
   const { isAdmin } = useAuth();
+  const navigate = useNavigate();
   const { data: employees, loading, error } = useApi(employeeService.list);
 
   if (loading) return <LoadingSpinner />;
@@ -34,6 +35,25 @@ export default function EmployeeListPage() {
           { key: 'address', label: 'Address' },
           { key: 'salary', label: 'Salary' },
           { key: 'isActive', label: 'Status', render: (row) => (row.isActive ? 'Active' : 'Inactive') },
+          ...(isAdmin
+            ? [
+                {
+                  key: 'actions',
+                  label: '',
+                  render: (row) => (
+                    <Button
+                      variant="secondary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/employees/${row.id}/edit`);
+                      }}
+                    >
+                      Edit
+                    </Button>
+                  ),
+                },
+              ]
+            : []),
         ]}
         rows={employees}
         onRowClick={isAdmin ? (row) => `/employees/${row.id}/edit` : undefined}

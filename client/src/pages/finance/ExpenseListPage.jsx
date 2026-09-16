@@ -28,17 +28,28 @@ export default function ExpenseListPage() {
     [startDate, endDate]
   );
 
-  const [form, setForm] = useState({ autoMaint: '', fuelAndOil: '', salaries: '', homeMaint: '', sundry: '', date: '' });
+  const emptyForm = { autoMaint: '', fuelAndOil: '', salaries: '', homeMaint: '', sundry: '', date: '' };
+  const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+
+  const resetForm = () => {
+    setForm(emptyForm);
+    setEditingId(null);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     setFormError(null);
     try {
-      await expenseService.create({ ...form, userId: user.id });
-      setForm({ autoMaint: '', fuelAndOil: '', salaries: '', homeMaint: '', sundry: '', date: '' });
+      if (editingId) {
+        await expenseService.update(editingId, form);
+      } else {
+        await expenseService.create({ ...form, userId: user.id });
+      }
+      resetForm();
       reload();
     } catch (err) {
       setFormError(err.response?.data?.error || err.message);
@@ -47,8 +58,21 @@ export default function ExpenseListPage() {
     }
   };
 
+  const handleEdit = (row) => {
+    setEditingId(row.id);
+    setForm({
+      autoMaint: row.autoMaint ?? '',
+      fuelAndOil: row.fuelAndOil ?? '',
+      salaries: row.salaries ?? '',
+      homeMaint: row.homeMaint ?? '',
+      sundry: row.sundry ?? '',
+      date: row.date.slice(0, 10),
+    });
+  };
+
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this expense?')) return;
+    if (editingId === id) resetForm();
     await expenseService.remove(id);
     reload();
   };
@@ -65,7 +89,7 @@ export default function ExpenseListPage() {
       </div>
 
       <div className="detail-section">
-        <h2>Record an expense</h2>
+        <h2>{editingId ? 'Edit expense' : 'Record an expense'}</h2>
         {formError && <ErrorMessage message={formError} />}
         <form onSubmit={handleSubmit} className="page-filters">
           <FormField label="Auto maint." name="autoMaint" type="number" step="0.01" value={form.autoMaint} onChange={(e) => setForm({ ...form, autoMaint: e.target.value })} />
@@ -74,7 +98,12 @@ export default function ExpenseListPage() {
           <FormField label="Home maint." name="homeMaint" type="number" step="0.01" value={form.homeMaint} onChange={(e) => setForm({ ...form, homeMaint: e.target.value })} />
           <FormField label="Sundry" name="sundry" type="number" step="0.01" value={form.sundry} onChange={(e) => setForm({ ...form, sundry: e.target.value })} />
           <FormField label="Date" name="date" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
-          <Button type="submit" disabled={submitting}>{submitting ? 'Saving…' : 'Add Expense'}</Button>
+          <Button type="submit" disabled={submitting}>
+            {submitting ? 'Saving…' : editingId ? 'Save Changes' : 'Add Expense'}
+          </Button>
+          {editingId && (
+            <Button type="button" variant="secondary" onClick={resetForm}>Cancel</Button>
+          )}
         </form>
       </div>
 
@@ -106,7 +135,16 @@ export default function ExpenseListPage() {
               { key: 'salaries', label: 'Salaries', render: (row) => formatCurrency(row.salaries) },
               { key: 'homeMaint', label: 'Home maint.', render: (row) => formatCurrency(row.homeMaint) },
               { key: 'sundry', label: 'Sundry', render: (row) => formatCurrency(row.sundry) },
-              { key: 'actions', label: '', render: (row) => <Button variant="danger" onClick={() => handleDelete(row.id)}>Delete</Button> },
+              {
+                key: 'actions',
+                label: '',
+                render: (row) => (
+                  <div style={{ display: 'flex', gap: 'var(--spacing-2)' }}>
+                    <Button variant="secondary" onClick={() => handleEdit(row)}>Edit</Button>
+                    <Button variant="danger" onClick={() => handleDelete(row.id)}>Delete</Button>
+                  </div>
+                ),
+              },
             ]}
             rows={expenses}
             emptyMessage="No expenses in this date range."

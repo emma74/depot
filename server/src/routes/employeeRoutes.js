@@ -88,9 +88,35 @@ router.get('/', async (req, res) => {
 //update employee
 router.put('/:id', async (req, res) => {
   try {
+    const {
+      firstName,
+      lastName,
+      phone,
+      ghCard,
+      license,
+      email,
+      address,
+      salary,
+      position,
+      isAdmin,
+      date
+    } = req.body;
+
     const employee = await prisma.employee.update({
       where: { id: Number(req.params.id) },
-      data: req.body
+      data: {
+        firstName,
+        lastName,
+        phone,  
+        ghCard,
+        license,
+        email,
+        address,
+        salary,
+        position,
+        isAdmin,
+        ...(date ? { date: new Date(date) } : {})
+      }
     });
     res.json(employee);
   } catch (err) {
