@@ -5,7 +5,10 @@ export function formatCurrency(value) {
 
 export function formatDate(value) {
   if (!value) return '—';
-  return new Date(value).toLocaleDateString('en-GB');
+  // Dates are stored as UTC midnight for a plain calendar day (no meaningful
+  // time-of-day component), so format in UTC too — otherwise a viewer behind
+  // UTC sees the previous day.
+  return new Date(value).toLocaleDateString('en-GB', { timeZone: 'UTC' });
 }
 
 export function formatQty(value) {

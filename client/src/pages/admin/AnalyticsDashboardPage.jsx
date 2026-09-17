@@ -35,7 +35,9 @@ const EXPENSE_CATEGORIES = [
 ];
 
 function monthLabel(date) {
-  return new Date(date).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+  // Dates are stored as UTC midnight for a plain calendar day, so format in UTC
+  // too — otherwise a viewer behind UTC can see entries mislabeled a month early.
+  return new Date(date).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
 // Cap a sorted-descending [{label, value}] list to the top N, folding the rest into "Other".
