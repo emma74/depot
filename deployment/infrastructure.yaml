@@ -260,7 +260,7 @@ Resources:
             # Start ECS agent only if certs exist
             ####################################################
             if [ -f /opt/zongo/certs/fullchain.pem ] && [ -f /opt/zongo/certs/privkey.pem ]; then
-              systemctl enable --now ecs
+              systemctl enable ecs
             else
               echo "$(date) ECS agent not started — certs missing" >> /var/log/zongo-bootstrap.log
             fi
