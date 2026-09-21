@@ -1,5 +1,7 @@
 import express from 'express';
 import prisma from '../prismaClient.js';
+import { HttpError, sendError } from '../utils/errors.js';
+import { syncOrderPayment } from '../utils/orderPayment.js';
 
 const router = express.Router();
 
@@ -70,6 +72,62 @@ router.get('/:id', async (req, res) => {
     res.json(returns);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ==============================
+//  3. UPDATE A RETURN
+// ==============================
+// Note: unlike the other two routes, `:id` here is the return's own id, not an order id.
+// The order's payment is re-derived afterwards, since returns reduce what is owed.
+router.put('/:id', async (req, res) => {
+  try {
+    const returnId = Number(req.params.id);
+    if (!Number.isInteger(returnId)) throw new HttpError(400, 'Invalid return id');
+
+    const qty = Number(req.body.qtyReturned);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      throw new HttpError(400, 'qtyReturned must be a positive number');
+    }
+
+    let returnDate;
+    if (req.body.returnDate) {
+      returnDate = new Date(req.body.returnDate);
+      if (Number.isNaN(returnDate.getTime())) throw new HttpError(400, 'returnDate is not a valid date');
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const existing = await tx.return.findUnique({
+        where: { id: returnId },
+        include: { salesOrderItem: { include: { return: true } } },
+      });
+      if (!existing) throw new HttpError(404, 'Return not found');
+
+      const item = existing.salesOrderItem;
+      const otherReturned = item.return
+        .filter((r) => r.id !== returnId)
+        .reduce((sum, r) => sum + Number(r.qtyReturned), 0);
+      const remaining = Number(item.qty) - otherReturned;
+      if (qty > remaining) {
+        throw new HttpError(
+          400,
+          `qtyReturned (${qty}) exceeds the remaining unreturned quantity (${remaining})`
+        );
+      }
+
+      const result = await tx.return.update({
+        where: { id: returnId },
+        data: { qtyReturned: qty, ...(returnDate && { returnDate }) },
+      });
+
+      await syncOrderPayment(tx, { salesOrderId: item.salesOrderId });
+
+      return result;
+    });
+
+    res.json(updated);
+  } catch (err) {
+    sendError(res, err);
   }
 });
 

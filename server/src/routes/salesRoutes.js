@@ -1,5 +1,8 @@
 import express from 'express';
 import prisma from '../prismaClient.js';
+import { HttpError, sendError } from '../utils/errors.js';
+import { parseOrderItems, planItemChanges } from '../utils/orderItems.js';
+import { syncOrderPayment } from '../utils/orderPayment.js';
 //import { calculateSummary } from '../utils/calculateSummary.js';
 
 const router = express.Router();
@@ -170,6 +173,122 @@ router.get('/:id', async (req, res) => {
     res.json(order);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ==============================
+//  3b. UPDATE ORDER
+// ==============================
+// Items with an `id` are edited in place, items without one are added, and existing
+// items left out of the request are removed. The order's payment is re-derived from
+// the new items (net of returns); what was already paid is kept. Status is untouched.
+router.put('/:id', async (req, res) => {
+  try {
+    const orderId = Number(req.params.id);
+    if (!Number.isInteger(orderId)) throw new HttpError(400, 'Invalid order id');
+
+    const { orderNumber, orderDate, orderType, customerId, employeeId } = req.body;
+
+    const number = typeof orderNumber === 'string' ? orderNumber.trim() : '';
+    if (!number) throw new HttpError(400, 'orderNumber is required');
+
+    const date = orderDate ? new Date(orderDate) : null;
+    if (!date || Number.isNaN(date.getTime())) throw new HttpError(400, 'A valid orderDate is required');
+
+    if (orderType !== 'CUSTOMER' && orderType !== 'EMPLOYEE') {
+      throw new HttpError(400, 'orderType must be CUSTOMER or EMPLOYEE');
+    }
+    const isCustomerOrder = orderType === 'CUSTOMER';
+    const partyId = Number(isCustomerOrder ? customerId : employeeId);
+    if (!Number.isInteger(partyId) || partyId <= 0) {
+      throw new HttpError(400, `${isCustomerOrder ? 'customerId' : 'employeeId'} is required`);
+    }
+
+    const items = parseOrderItems(req.body.items);
+
+    const order = await prisma.$transaction(async (tx) => {
+      const existing = await tx.salesOrder.findUnique({
+        where: { id: orderId },
+        include: { items: { include: { return: true } } },
+      });
+      if (!existing) throw new HttpError(404, 'Order not found');
+
+      const party = isCustomerOrder
+        ? await tx.customer.findUnique({ where: { id: partyId } })
+        : await tx.employee.findUnique({ where: { id: partyId } });
+      if (!party) throw new HttpError(404, isCustomerOrder ? 'Customer not found' : 'Employee not found');
+
+      const { updates, creates, removals } = planItemChanges(existing.items, items);
+      const returnedQty = (item) => item.return.reduce((sum, r) => sum + Number(r.qtyReturned), 0);
+
+      for (const removed of removals) {
+        if (removed.return.length > 0) {
+          throw new HttpError(400, `Cannot remove ${removed.product}: it has returns recorded`);
+        }
+      }
+      const existingById = new Map(existing.items.map((item) => [item.id, item]));
+      for (const item of updates) {
+        const returned = returnedQty(existingById.get(item.id));
+        if (item.qty < returned) {
+          throw new HttpError(400, `${item.product}: qty (${item.qty}) is less than the ${returned} already returned`);
+        }
+      }
+
+      if (removals.length > 0) {
+        await tx.salesOrderItem.deleteMany({ where: { id: { in: removals.map((r) => r.id) } } });
+      }
+      for (const item of updates) {
+        await tx.salesOrderItem.update({
+          where: { id: item.id },
+          data: {
+            product: item.product,
+            qty: item.qty,
+            unitPrice: item.unitPrice,
+            amount: item.qty * item.unitPrice,
+            saleOrderDate: date,
+          },
+        });
+      }
+      if (creates.length > 0) {
+        await tx.salesOrderItem.createMany({
+          data: creates.map((item) => ({
+            salesOrderId: orderId,
+            product: item.product,
+            qty: item.qty,
+            unitPrice: item.unitPrice,
+            amount: item.qty * item.unitPrice,
+            saleOrderDate: date,
+          })),
+        });
+      }
+
+      await tx.salesOrder.update({
+        where: { id: orderId },
+        data: {
+          orderNumber: number,
+          orderDate: date,
+          orderType,
+          customerId: isCustomerOrder ? partyId : null,
+          employeeId: isCustomerOrder ? null : partyId,
+        },
+      });
+
+      await syncOrderPayment(tx, {
+        salesOrderId: orderId,
+        userId: party.userId,
+        paymentDate: date,
+      });
+
+      return tx.salesOrder.findUnique({
+        where: { id: orderId },
+        include: { items: true, payments: true },
+      });
+    });
+
+    res.json(order);
+  } catch (err) {
+    sendError(res, err);
   }
 });
 

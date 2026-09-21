@@ -90,10 +90,20 @@ router.get('/:id', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const { businessName, contactPerson, phone, ghCard, location, date } = req.body;
 
+    // Only editable fields are passed through — the edit form sends back the whole
+    // fetched customer (orders, user, timestamps, ...), which Prisma would reject.
     const updatedCustomer = await prisma.customer.update({
       where: { id: Number(id) },
-      data: req.body
+      data: {
+        businessName,
+        contactPerson,
+        phone,
+        ghCard,
+        location,
+        ...(date ? { date: new Date(date) } : {})
+      }
     });
 
     res.json(updatedCustomer);

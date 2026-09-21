@@ -50,9 +50,18 @@ router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { autoMaint, fuelAndOil, salaries, homeMaint, sundry, date } = req.body;
+    // A cleared form field arrives as '' — store that as null, not an invalid Decimal.
+    const amountOrNull = (value) => (value === '' || value == null ? null : value);
     const expense = await prisma.expense.update({
       where: { id: Number(id) },
-      data: { autoMaint, fuelAndOil, salaries, homeMaint, sundry, date: new Date(date) }
+      data: {
+        autoMaint: amountOrNull(autoMaint),
+        fuelAndOil: amountOrNull(fuelAndOil),
+        salaries: amountOrNull(salaries),
+        homeMaint: amountOrNull(homeMaint),
+        sundry: amountOrNull(sundry),
+        date: new Date(date)
+      }
     });
     res.json(expense);
   } catch (err) {

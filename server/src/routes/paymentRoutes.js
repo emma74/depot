@@ -1,5 +1,6 @@
 import express from 'express';
 import prisma from '../prismaClient.js';
+import { refreshRunningTotals } from '../utils/orderPayment.js';
 
 const router = express.Router();
 
@@ -68,28 +69,15 @@ router.patch('/', async (req, res) => {
         throw new Error('Payment record not found for this order');
       }
 
-      // Lock every Payment row for this user before reading the aggregate below, so a
+      // Lock every Payment row for this user before rewriting the running totals below, so a
       // concurrent PATCH for a different order of the same user blocks until this
-      // transaction commits instead of racing on the read-then-write of the running
-      // totals (Postgres's default Read Committed isolation would otherwise let both
-      // transactions read the same pre-update aggregate and lose one update).
+      // transaction commits instead of racing on them.
       await tx.$queryRaw`SELECT id FROM "Payment" WHERE "userId" = ${existing.userId} FOR UPDATE`;
 
       const newAmountBalance = amountDue - Number(amountPaid);
       const newEmptiesBal = emptiesDue - Number(emptiesRec);
 
-      // Aggregate all balances for this user, then replace this record's old contribution with the new one
-      const aggregate = await tx.payment.aggregate({
-        where: { userId: existing.userId },
-        _sum: { amountBalance: true, emptiesBal: true },
-      });
-
-      const newTotalAmountBal =
-        Number(aggregate._sum.amountBalance || 0) - Number(existing.amountBalance) + newAmountBalance;
-      const newTotalEmptiesBal =
-        Number(aggregate._sum.emptiesBal || 0) - Number(existing.emptiesBal || 0) + newEmptiesBal;
-
-      const updated = await tx.payment.update({
+      await tx.payment.update({
         where: { id: existing.id },
         data: {
           amountDue,
@@ -98,14 +86,15 @@ router.patch('/', async (req, res) => {
           emptiesRec,
           amountBalance: newAmountBalance,
           emptiesBal: newEmptiesBal,
-          totalAmountBal: newTotalAmountBal,
-          totalEmptiesBal: newTotalEmptiesBal,
           checkDate: checkDate ? new Date(checkDate) : null,
           checkNumber,
           loadNumber,
           carNumber,
         },
       });
+
+      // Later payments of this user carry running totals that include this one's balance.
+      await refreshRunningTotals(tx, existing.userId);
 
       if (salesOrderId) {
         await tx.salesOrder.update({
@@ -114,7 +103,7 @@ router.patch('/', async (req, res) => {
         });
       }
 
-      return updated;
+      return tx.payment.findUnique({ where: { id: existing.id } });
     });
 
     res.json({ message: 'Payment updated successfully', payment });

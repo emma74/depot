@@ -68,6 +68,7 @@ export default function App() {
                   <Route path="employees/:id/edit" element={<EmployeeFormPage />} />
 
                   <Route path="sales-orders/new" element={<SalesOrderFormPage />} />
+                  <Route path="sales-orders/:id/edit" element={<SalesOrderFormPage />} />
 
                   <Route path="returns/new" element={<ReturnFormPage />} />
 
@@ -79,6 +80,7 @@ export default function App() {
                   <Route path="purchase-orders" element={<PurchaseOrderListPage />} />
                   <Route path="purchase-orders/new" element={<PurchaseOrderFormPage />} />
                   <Route path="purchase-orders/:id" element={<PurchaseOrderDetailPage />} />
+                  <Route path="purchase-orders/:id/edit" element={<PurchaseOrderFormPage />} />
 
                   <Route path="payments" element={<PaymentListPage />} />
 

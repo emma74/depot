@@ -61,8 +61,8 @@ export default function DepositListPage() {
 
   const handleEdit = (row) => {
     setEditingId(row.id);
-    setCash(String(row.cash));
-    setCheck(String(row.check));
+    setCash(String(row.cash ?? ''));
+    setCheck(String(row.check ?? ''));
     setDate(row.date.slice(0, 10));
   };
 

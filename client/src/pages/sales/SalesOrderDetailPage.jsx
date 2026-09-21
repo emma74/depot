@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useApi } from '../../hooks/useApi';
@@ -8,6 +9,7 @@ import ErrorMessage from '../../components/common/ErrorMessage';
 import Button from '../../components/common/Button';
 import StatusBadge from '../../components/common/StatusBadge';
 import FormField from '../../components/common/FormField';
+import PaymentEditModal from '../../components/payments/PaymentEditModal';
 import { formatCurrency, formatDate, formatQty } from '../../utils/format';
 
 const STATUS_OPTIONS = ['pending', 'completed', 'cancelled'];
@@ -17,6 +19,7 @@ export default function SalesOrderDetailPage() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const { data: order, loading, error, reload } = useApi(() => salesOrderService.get(id), [id]);
+  const [editingPayment, setEditingPayment] = useState(null);
 
   if (loading) return <LoadingSpinner />;
   if (error) return <ErrorMessage message={error} />;
@@ -43,6 +46,9 @@ export default function SalesOrderDetailPage() {
         <h1>Order {order.orderNumber}</h1>
         {isAdmin && (
           <div style={{ display: 'flex', gap: 'var(--spacing-3)' }}>
+            <Link to={`/sales-orders/${order.id}/edit`}>
+              <Button variant="secondary">Edit</Button>
+            </Link>
             <Link to={`/returns/new?salesOrderId=${order.id}`}>
               <Button variant="secondary">Record Return</Button>
             </Link>
@@ -112,11 +118,33 @@ export default function SalesOrderDetailPage() {
             { key: 'amountDue', label: 'Due', render: (row) => formatCurrency(row.amountDue) },
             { key: 'amountPaid', label: 'Paid', render: (row) => formatCurrency(row.amountPaid) },
             { key: 'amountBalance', label: 'Balance', render: (row) => formatCurrency(row.amountBalance) },
+            ...(isAdmin
+              ? [
+                  {
+                    key: 'actions',
+                    label: '',
+                    render: (row) => (
+                      <Button variant="secondary" onClick={() => setEditingPayment(row)}>Edit</Button>
+                    ),
+                  },
+                ]
+              : []),
           ]}
           rows={order.payments}
           emptyMessage="No payments recorded."
         />
       </div>
+
+      {editingPayment && (
+        <PaymentEditModal
+          payment={editingPayment}
+          onClose={() => setEditingPayment(null)}
+          onSaved={() => {
+            setEditingPayment(null);
+            reload();
+          }}
+        />
+      )}
     </div>
   );
 }

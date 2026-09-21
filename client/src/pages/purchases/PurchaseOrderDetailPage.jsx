@@ -1,14 +1,18 @@
-import { useParams } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
 import DataTable from '../../components/common/DataTable';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import ErrorMessage from '../../components/common/ErrorMessage';
+import Button from '../../components/common/Button';
+import PaymentEditModal from '../../components/payments/PaymentEditModal';
 import { formatCurrency, formatDate, formatQty } from '../../utils/format';
 
 export default function PurchaseOrderDetailPage() {
   const { id } = useParams();
-  const { data: order, loading, error } = useApi(() => purchaseOrderService.get(id), [id]);
+  const { data: order, loading, error, reload } = useApi(() => purchaseOrderService.get(id), [id]);
+  const [editingPayment, setEditingPayment] = useState(null);
 
   if (loading) return <LoadingSpinner />;
   if (error) return <ErrorMessage message={error} />;
@@ -18,6 +22,9 @@ export default function PurchaseOrderDetailPage() {
     <div>
       <div className="page-header">
         <h1>Invoice {order.invoiceNumber}</h1>
+        <Link to={`/purchase-orders/${order.id}/edit`}>
+          <Button variant="secondary">Edit</Button>
+        </Link>
       </div>
 
       <div className="detail-section">
@@ -48,11 +55,29 @@ export default function PurchaseOrderDetailPage() {
             { key: 'amountDue', label: 'Due', render: (row) => formatCurrency(row.amountDue) },
             { key: 'amountPaid', label: 'Paid', render: (row) => formatCurrency(row.amountPaid) },
             { key: 'amountBalance', label: 'Balance', render: (row) => formatCurrency(row.amountBalance) },
+            {
+              key: 'actions',
+              label: '',
+              render: (row) => (
+                <Button variant="secondary" onClick={() => setEditingPayment(row)}>Edit</Button>
+              ),
+            },
           ]}
           rows={order.payments}
           emptyMessage="No payments recorded."
         />
       </div>
+
+      {editingPayment && (
+        <PaymentEditModal
+          payment={editingPayment}
+          onClose={() => setEditingPayment(null)}
+          onSaved={() => {
+            setEditingPayment(null);
+            reload();
+          }}
+        />
+      )}
     </div>
   );
 }

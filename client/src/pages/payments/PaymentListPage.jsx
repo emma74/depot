@@ -4,6 +4,7 @@ import FormField from '../../components/common/FormField';
 import Button from '../../components/common/Button';
 import ErrorMessage from '../../components/common/ErrorMessage';
 import DataTable from '../../components/common/DataTable';
+import PaymentEditModal from '../../components/payments/PaymentEditModal';
 import { formatCurrency, formatDate } from '../../utils/format';
 
 export default function PaymentListPage() {
@@ -13,8 +14,9 @@ export default function PaymentListPage() {
   const [lookupError, setLookupError] = useState(null);
   const [lookupLoading, setLookupLoading] = useState(false);
 
-  const handleLookup = async (e) => {
-    e.preventDefault();
+  const [editingPayment, setEditingPayment] = useState(null);
+
+  const runLookup = async () => {
     setLookupLoading(true);
     setLookupError(null);
     try {
@@ -25,6 +27,11 @@ export default function PaymentListPage() {
     } finally {
       setLookupLoading(false);
     }
+  };
+
+  const handleLookup = (e) => {
+    e.preventDefault();
+    runLookup();
   };
 
   // --- Reconcile a payment against an order ---
@@ -100,12 +107,36 @@ export default function PaymentListPage() {
               { key: 'amountDue', label: 'Due', render: (row) => formatCurrency(row.amountDue) },
               { key: 'amountPaid', label: 'Paid', render: (row) => formatCurrency(row.amountPaid) },
               { key: 'amountBalance', label: 'Balance', render: (row) => formatCurrency(row.amountBalance) },
+              {
+                key: 'order',
+                label: 'Order',
+                render: (row) =>
+                  row.salesOrderId ? `Sales #${row.salesOrderId}` : `Purchase #${row.purchaseOrderId}`,
+              },
+              {
+                key: 'actions',
+                label: '',
+                render: (row) => (
+                  <Button variant="secondary" onClick={() => setEditingPayment(row)}>Edit</Button>
+                ),
+              },
             ]}
             rows={payments}
             emptyMessage="No payments found for this user."
           />
         )}
       </div>
+
+      {editingPayment && (
+        <PaymentEditModal
+          payment={editingPayment}
+          onClose={() => setEditingPayment(null)}
+          onSaved={() => {
+            setEditingPayment(null);
+            runLookup();
+          }}
+        />
+      )}
     </div>
   );
 }

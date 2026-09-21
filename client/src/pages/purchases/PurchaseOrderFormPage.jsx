@@ -1,23 +1,47 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
 import FormField from '../../components/common/FormField';
 import ProductInput from '../../components/common/ProductInput';
 import Button from '../../components/common/Button';
+import LoadingSpinner from '../../components/common/LoadingSpinner';
 import ErrorMessage from '../../components/common/ErrorMessage';
 
 const emptyItem = { product: '', qty: '', unitPrice: '' };
 
 export default function PurchaseOrderFormPage() {
+  const { id } = useParams();
+  const isEdit = !!id;
   const navigate = useNavigate();
   const { user } = useAuth();
 
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [invoiceDate, setInvoiceDate] = useState('');
   const [items, setItems] = useState([{ ...emptyItem }]);
+  const [loading, setLoading] = useState(isEdit);
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!isEdit) return;
+    purchaseOrderService
+      .get(id)
+      .then((order) => {
+        setInvoiceNumber(order.invoiceNumber);
+        setInvoiceDate(order.invoiceDate.slice(0, 10));
+        setItems(
+          order.items.map((item) => ({
+            id: item.id,
+            product: item.product,
+            qty: String(item.qty),
+            unitPrice: String(item.unitPrice),
+          }))
+        );
+      })
+      .catch((err) => setError(err.response?.data?.message || err.message))
+      .finally(() => setLoading(false));
+  }, [id, isEdit]);
 
   const updateItem = (index, field, value) => {
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
@@ -31,28 +55,38 @@ export default function PurchaseOrderFormPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await purchaseOrderService.create({
+      const payload = {
         invoiceNumber,
         invoiceDate,
-        userId: user.id,
         items: items.map((item) => ({
+          id: item.id,
           product: item.product,
           qty: Number(item.qty),
           unitPrice: Number(item.unitPrice),
         })),
-      });
-      navigate('/purchase-orders');
+      };
+      if (isEdit) {
+        await purchaseOrderService.update(id, payload);
+        navigate(`/purchase-orders/${id}`);
+      } else {
+        await purchaseOrderService.create({ ...payload, userId: user.id });
+        navigate('/purchase-orders');
+      }
     } catch (err) {
-      setError(err.response?.data?.error || err.message);
+      setError(err.response?.data?.message || err.response?.data?.error || err.message);
     } finally {
       setSubmitting(false);
     }
   };
 
+  const cancelPath = isEdit ? `/purchase-orders/${id}` : '/purchase-orders';
+
+  if (loading) return <LoadingSpinner />;
+
   return (
     <div className="form-page">
       <div className="page-header">
-        <h1>New Purchase Order</h1>
+        <h1>{isEdit ? 'Edit Purchase Order' : 'New Purchase Order'}</h1>
       </div>
 
       {error && <ErrorMessage message={error} />}
@@ -63,7 +97,7 @@ export default function PurchaseOrderFormPage() {
 
         <h2 style={{ fontSize: '1em', margin: '1.5rem 0 0.75rem' }}>Items</h2>
         {items.map((item, i) => (
-          <div key={i} style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--spacing-3)', alignItems: 'flex-start' }}>
+          <div key={item.id ?? `new-${i}`} style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--spacing-3)', alignItems: 'flex-start' }}>
             <ProductInput
               label="Product"
               name={`product-${i}`}
@@ -84,8 +118,10 @@ export default function PurchaseOrderFormPage() {
         <Button type="button" variant="secondary" onClick={addItem}>+ Add item</Button>
 
         <div className="form-page__actions">
-          <Button type="submit" disabled={submitting}>{submitting ? 'Saving…' : 'Create Order'}</Button>
-          <Button type="button" variant="secondary" onClick={() => navigate('/purchase-orders')}>Cancel</Button>
+          <Button type="submit" disabled={submitting}>
+            {submitting ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Order'}
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => navigate(cancelPath)}>Cancel</Button>
         </div>
       </form>
     </div>
