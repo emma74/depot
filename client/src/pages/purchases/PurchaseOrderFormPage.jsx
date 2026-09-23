@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import { useApi } from '../../hooks/useApi';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
+import { supplierService } from '../../services/supplierService';
 import FormField from '../../components/common/FormField';
 import ProductInput from '../../components/common/ProductInput';
+import SupplierInput from '../../components/common/SupplierInput';
 import Button from '../../components/common/Button';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import ErrorMessage from '../../components/common/ErrorMessage';
@@ -18,10 +21,13 @@ export default function PurchaseOrderFormPage() {
 
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [invoiceDate, setInvoiceDate] = useState('');
+  const [supplierName, setSupplierName] = useState('');
   const [items, setItems] = useState([{ ...emptyItem }]);
   const [loading, setLoading] = useState(isEdit);
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const { data: suppliers } = useApi(supplierService.list);
 
   useEffect(() => {
     if (!isEdit) return;
@@ -30,6 +36,7 @@ export default function PurchaseOrderFormPage() {
       .then((order) => {
         setInvoiceNumber(order.invoiceNumber);
         setInvoiceDate(order.invoiceDate.slice(0, 10));
+        setSupplierName(order.supplier?.name ?? '');
         setItems(
           order.items.map((item) => ({
             id: item.id,
@@ -55,9 +62,17 @@ export default function PurchaseOrderFormPage() {
     setSubmitting(true);
     setError(null);
     try {
+      // A typed name that matches an existing supplier (case-insensitive) uses that
+      // supplier; otherwise the server creates a new one with this name.
+      const trimmedSupplier = supplierName.trim();
+      const matchedSupplier = (suppliers || []).find(
+        (s) => s.name.toLowerCase() === trimmedSupplier.toLowerCase()
+      );
+
       const payload = {
         invoiceNumber,
         invoiceDate,
+        ...(matchedSupplier ? { supplierId: matchedSupplier.id } : { supplierName: trimmedSupplier }),
         items: items.map((item) => ({
           id: item.id,
           product: item.product,
@@ -94,6 +109,14 @@ export default function PurchaseOrderFormPage() {
       <form onSubmit={handleSubmit}>
         <FormField label="Invoice number" name="invoiceNumber" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} required />
         <FormField label="Invoice date" name="invoiceDate" type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} required />
+        <SupplierInput
+          name="supplierName"
+          value={supplierName}
+          onChange={(e) => setSupplierName(e.target.value)}
+          suppliers={suppliers}
+          hint="Pick from the list or type a new supplier's name"
+          required
+        />
 
         <h2 style={{ fontSize: '1em', margin: '1.5rem 0 0.75rem' }}>Items</h2>
         {items.map((item, i) => (

@@ -24,6 +24,7 @@ export default function Sidebar({ isOpen, onNavigate }) {
             <div className="sidebar__section-title">Trading</div>
             <NavLink to="/customers" className={navLinkClass} onClick={onNavigate}>Customers</NavLink>
             <NavLink to="/purchase-orders" className={navLinkClass} onClick={onNavigate}>Purchase Orders</NavLink>
+            <NavLink to="/suppliers" className={navLinkClass} onClick={onNavigate}>Suppliers</NavLink>
             <NavLink to="/payments" className={navLinkClass} onClick={onNavigate}>Payments</NavLink>
           </div>
 

@@ -21,3 +21,11 @@
   gap: var(--spacing-4);
   align-items: start;
 }
+
+/* Stacked, full-width charts — for pairs that get too cramped side by side to read
+   (axis labels, legends) on anything narrower than a wide desktop window. */
+.analytics-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-6);
+}

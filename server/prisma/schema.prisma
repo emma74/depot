@@ -212,14 +212,31 @@ model PurchaseOrder {
   items         PurchaseOrderItem[]
   payments      Payment[]
 
+  // Who logged this invoice — an audit fact, not who the money is owed to.
   userId          Int
   user            User            @relation(fields: [userId], references: [id])
+
+  // Who the money is owed to. Nullable only because orders created before suppliers
+  // existed have none yet; every order created or edited from here on requires one.
+  supplierId      Int?
+  supplier        Supplier?       @relation(fields: [supplierId], references: [id])
 
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
   //index
   @@index([invoiceDate])
+  @@index([supplierId])
+}
+
+model Supplier {
+  id             Int             @id @default(autoincrement())
+  name           String          @unique
+
+  purchaseOrders PurchaseOrder[]
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 }
 
 model PurchaseOrderItem {
@@ -269,8 +286,11 @@ model Payment {
   emptiesRec      Decimal?        @db.Decimal(10,3)
   emptiesBal      Decimal?        @db.Decimal(10,3)
 
-  userId          Int
-  user            User            @relation(fields: [userId], references: [id])
+  // Who this payment is with, for a sales order — the customer or employee it's billed
+  // to. Null for a purchase order payment: there's no User behind a supplier, so who a
+  // purchase-order payment is with lives on PurchaseOrder.supplierId instead.
+  userId          Int?
+  user            User?           @relation(fields: [userId], references: [id])
 
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt

@@ -31,6 +31,7 @@ export default function PurchaseOrderDetailPage() {
       <div className="detail-section">
         <dl className="detail-grid">
           <div><dt>Date</dt><dd>{formatDate(order.invoiceDate)}</dd></div>
+          <div><dt>Supplier</dt><dd>{order.supplier?.name || '—'}</dd></div>
         </dl>
       </div>
 

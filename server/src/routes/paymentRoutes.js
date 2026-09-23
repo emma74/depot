@@ -50,8 +50,11 @@ function parsePaymentInput(body, { requireAmount }) {
   };
 }
 
-// Resolves who owes on an order, straight from the order itself — never from the request
-// body, so a payment can't be recorded against the wrong person by mistake or on purpose.
+// Resolves who a payment is with, straight from the order itself — never from the request
+// body, so a payment can't be attributed to the wrong person by mistake or on purpose.
+// Returns a userId for a sales order (its customer or employee); null for a purchase order
+// — a purchase order's counterparty is a Supplier, which isn't a User, so its payments
+// aren't attributed via userId at all (see PurchaseOrder.supplierId).
 async function resolveOrderPayer(tx, { salesOrderId, purchaseOrderId }) {
   if (salesOrderId) {
     const order = await tx.salesOrder.findUnique({
@@ -66,7 +69,7 @@ async function resolveOrderPayer(tx, { salesOrderId, purchaseOrderId }) {
 
   const order = await tx.purchaseOrder.findUnique({ where: { id: purchaseOrderId } });
   if (!order) throw new HttpError(404, 'Purchase order not found');
-  return order.userId;
+  return null;
 }
 
 // ==============================

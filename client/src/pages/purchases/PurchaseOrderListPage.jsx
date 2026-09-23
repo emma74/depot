@@ -45,6 +45,7 @@ export default function PurchaseOrderListPage() {
           columns={[
             { key: 'invoiceNumber', label: 'Invoice #' },
             { key: 'invoiceDate', label: 'Date', render: (row) => formatDate(row.invoiceDate) },
+            { key: 'supplier', label: 'Supplier', render: (row) => row.supplier?.name || '—' },
             { key: 'user', label: 'Recorded by', render: (row) => row.user?.username || '—' },
             { key: 'total', label: 'Total', render: (row) => formatCurrency(orderTotal(row)) },
           ]}

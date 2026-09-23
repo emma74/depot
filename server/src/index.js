@@ -9,7 +9,8 @@ import userRoutes from './routes/userRoutes.js'
 import saleRoutes from './routes/salesRoutes.js'
 import returnRoutes from './routes/returnRoutes.js'
 import paymentRoutes from './routes/paymentRoutes.js'
-import purchaseRoutes from './routes/purchaseRoutes.js' 
+import purchaseRoutes from './routes/purchaseRoutes.js'
+import supplierRoutes from './routes/supplierRoutes.js'
 import depositRoutes from './routes/depositRoutes.js'
 import otherIncomeRoutes from './routes/otherIncomeRoutes.js';
 import expensesRoutes from './routes/expensesRoutes.js';
@@ -34,6 +35,7 @@ app.use('/api/salesorders', authMiddleware, requireAdminForWrite, saleRoutes)
 app.use('/api/returns', authMiddleware, requireAdminForWrite, returnRoutes)
 app.use('/api/payments', authMiddleware, requireAdmin, paymentRoutes)
 app.use('/api/purchases', authMiddleware, requireAdmin, purchaseRoutes)
+app.use('/api/suppliers', authMiddleware, requireAdmin, supplierRoutes)
 app.use('/api/deposits', authMiddleware, requireAdmin, depositRoutes)
 app.use('/api/other-incomes', authMiddleware, requireAdmin, otherIncomeRoutes)
 app.use('/api/expenses', authMiddleware, requireAdmin, expensesRoutes)

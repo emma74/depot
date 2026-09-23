@@ -154,7 +154,7 @@ function ExpensesSection() {
       ) : error ? (
         <ErrorMessage message={error} />
       ) : (
-        <div className="analytics-grid">
+        <div className="analytics-stack">
           <BarChart
             title="Expenses by category"
             subtitle={`${startDate} to ${endDate}`}

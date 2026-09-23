@@ -29,6 +29,8 @@ import PurchaseOrderListPage from './pages/purchases/PurchaseOrderListPage';
 import PurchaseOrderDetailPage from './pages/purchases/PurchaseOrderDetailPage';
 import PurchaseOrderFormPage from './pages/purchases/PurchaseOrderFormPage';
 
+import SupplierListPage from './pages/suppliers/SupplierListPage';
+
 import PaymentListPage from './pages/payments/PaymentListPage';
 
 import UserAdminPage from './pages/admin/UserAdminPage';
@@ -81,6 +83,8 @@ export default function App() {
                   <Route path="purchase-orders/new" element={<PurchaseOrderFormPage />} />
                   <Route path="purchase-orders/:id" element={<PurchaseOrderDetailPage />} />
                   <Route path="purchase-orders/:id/edit" element={<PurchaseOrderFormPage />} />
+
+                  <Route path="suppliers" element={<SupplierListPage />} />
 
                   <Route path="payments" element={<PaymentListPage />} />
 
