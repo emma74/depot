@@ -9,7 +9,7 @@ import ErrorMessage from '../../components/common/ErrorMessage';
 import Button from '../../components/common/Button';
 import StatusBadge from '../../components/common/StatusBadge';
 import FormField from '../../components/common/FormField';
-import PaymentEditModal from '../../components/payments/PaymentEditModal';
+import PaymentFormModal from '../../components/payments/PaymentFormModal';
 import { formatCurrency, formatDate, formatQty } from '../../utils/format';
 
 const STATUS_OPTIONS = ['pending', 'completed', 'cancelled'];
@@ -19,6 +19,7 @@ export default function SalesOrderDetailPage() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const { data: order, loading, error, reload } = useApi(() => salesOrderService.get(id), [id]);
+  const [addingPayment, setAddingPayment] = useState(false);
   const [editingPayment, setEditingPayment] = useState(null);
 
   if (loading) return <LoadingSpinner />;
@@ -111,7 +112,10 @@ export default function SalesOrderDetailPage() {
       </div>
 
       <div className="detail-section">
-        <h2>Payments</h2>
+        <div className="page-header">
+          <h2>Payments</h2>
+          {isAdmin && <Button variant="secondary" onClick={() => setAddingPayment(true)}>+ Add Payment</Button>}
+        </div>
         <DataTable
           columns={[
             { key: 'paymentDate', label: 'Date', render: (row) => formatDate(row.paymentDate) },
@@ -135,8 +139,18 @@ export default function SalesOrderDetailPage() {
         />
       </div>
 
+      {addingPayment && (
+        <PaymentFormModal
+          orderRef={{ salesOrderId: order.id }}
+          onClose={() => setAddingPayment(false)}
+          onSaved={() => {
+            setAddingPayment(false);
+            reload();
+          }}
+        />
+      )}
       {editingPayment && (
-        <PaymentEditModal
+        <PaymentFormModal
           payment={editingPayment}
           onClose={() => setEditingPayment(null)}
           onSaved={() => {

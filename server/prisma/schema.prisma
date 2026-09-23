@@ -265,9 +265,6 @@ model Payment {
   loadNumber      String?
   carNumber       String?
 
-  totalAmountBal  Decimal? @db.Decimal(10,2)
-  totalEmptiesBal Decimal? @db.Decimal(10,3)
-
   emptiesDue      Decimal?        @db.Decimal(10,3)
   emptiesRec      Decimal?        @db.Decimal(10,3)
   emptiesBal      Decimal?        @db.Decimal(10,3)

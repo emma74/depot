@@ -2,8 +2,8 @@ import express from 'express';
 import prisma from '../prismaClient.js';
 import { HttpError, sendError } from '../utils/errors.js';
 import { parseOrderItems, planItemChanges } from '../utils/orderItems.js';
-import { syncOrderPayment } from '../utils/orderPayment.js';
-//import { calculateSummary } from '../utils/calculateSummary.js';
+import { refreshOrderLedger, reassignOrderPayer } from '../utils/orderPayment.js';
+import { getPayerBalance } from '../utils/payerBalance.js';
 
 const router = express.Router();
 
@@ -56,37 +56,23 @@ router.post('/', async (req, res) => {
       });
 
       if (payerId) {
-        let amountDue = 0;
-        let emptiesDue = 0;
-        for (const item of items) {
-          amountDue += item.qty * item.unitPrice;
-          if (item.product === '30cl' || item.product === '20cl') {
-            emptiesDue += item.qty;
-          }
-        }
-
-        const aggregate = await tx.payment.aggregate({
-          where: { userId: payerId },
-          _sum: { amountBalance: true, emptiesBal: true },
-        });
-        const prevAmountBal = Number(aggregate._sum.amountBalance || 0);
-        const prevEmptiesBal = Number(aggregate._sum.emptiesBal || 0);
-
+        // Opens this order's payment ledger with a $0-paid entry, so it shows up correctly
+        // in the payer's balance (full amount owed, nothing paid yet) even before their
+        // first real payment. refreshOrderLedger fills in the real amountDue/amountBalance.
         await tx.payment.create({
           data: {
             paymentDate: new Date(orderDate),
             user: { connect: { id: payerId } },
             salesOrder: { connect: { id: newOrder.id } },
-            amountDue,
+            amountDue: 0,
             amountPaid: 0,
-            amountBalance: amountDue,
-            emptiesDue,
+            amountBalance: 0,
+            emptiesDue: 0,
             emptiesRec: 0,
-            emptiesBal: emptiesDue,
-            totalAmountBal: prevAmountBal + amountDue,
-            totalEmptiesBal: prevEmptiesBal + emptiesDue,
+            emptiesBal: 0,
           },
         });
+        await refreshOrderLedger(tx, { salesOrderId: newOrder.id });
       }
 
       return newOrder;
@@ -155,7 +141,7 @@ router.get('/:id', async (req, res) => {
             return: true
           }
       },
-      payments: true,
+      payments: { orderBy: [{ paymentDate: 'asc' }, { id: 'asc' }] },
       employee: true
       }
     });
@@ -181,8 +167,14 @@ router.get('/:id', async (req, res) => {
 //  3b. UPDATE ORDER
 // ==============================
 // Items with an `id` are edited in place, items without one are added, and existing
-// items left out of the request are removed. The order's payment is re-derived from
-// the new items (net of returns); what was already paid is kept. Status is untouched.
+// items left out of the request are removed. The order's payment ledger is re-derived
+// from the new items (net of returns); every payment already recorded stays as its own
+// entry, on its own date. Status is untouched.
+//
+// orderType (CUSTOMER vs EMPLOYEE) is fixed at creation and can't change here — it's a
+// business decision made when the order is written up, not a detail to correct later.
+// Which specific customer or employee it's billed to can be corrected, though; doing so
+// moves every payment already recorded against this order to the new payer.
 router.put('/:id', async (req, res) => {
   try {
     const orderId = Number(req.params.id);
@@ -213,11 +205,17 @@ router.put('/:id', async (req, res) => {
         include: { items: { include: { return: true } } },
       });
       if (!existing) throw new HttpError(404, 'Order not found');
+      if (orderType !== existing.orderType) {
+        throw new HttpError(400, 'orderType cannot be changed once an order is created');
+      }
 
       const party = isCustomerOrder
         ? await tx.customer.findUnique({ where: { id: partyId } })
         : await tx.employee.findUnique({ where: { id: partyId } });
       if (!party) throw new HttpError(404, isCustomerOrder ? 'Customer not found' : 'Employee not found');
+
+      const currentPartyId = isCustomerOrder ? existing.customerId : existing.employeeId;
+      const payerChanged = currentPartyId !== partyId;
 
       const { updates, creates, removals } = planItemChanges(existing.items, items);
       const returnedQty = (item) => item.return.reduce((sum, r) => sum + Number(r.qtyReturned), 0);
@@ -274,11 +272,10 @@ router.put('/:id', async (req, res) => {
         },
       });
 
-      await syncOrderPayment(tx, {
-        salesOrderId: orderId,
-        userId: party.userId,
-        paymentDate: date,
-      });
+      if (payerChanged) {
+        await reassignOrderPayer(tx, { salesOrderId: orderId, userId: party.userId });
+      }
+      await refreshOrderLedger(tx, { salesOrderId: orderId });
 
       return tx.salesOrder.findUnique({
         where: { id: orderId },
@@ -365,27 +362,29 @@ router.delete('/:id', async (req, res) => {
 //  6. ORDER SUMMARY
 // ==============================
 // GET /users/:id/summary
+// totalPaid is "how much this payer paid in this date range" — a plain sum over their
+// payment history, which stays correct now that a payer can have several payments per
+// order. totalBalance/totalEmptiesBalance are "what they owe right now" — a balance is a
+// snapshot, not a date-range total, so it's computed live and ignores startDate/endDate.
 router.get('/users/:id/summary', async (req, res) => {
   try {
     const userId = Number(req.params.id);
     const { startDate, endDate } = req.query;
 
-    // Build date filter if provided
     const dateFilter = {};
     if (startDate) dateFilter.gte = new Date(startDate);
     if (endDate) dateFilter.lte = new Date(endDate);
 
-    const where = {
-      userId,
-      ...(startDate || endDate ? { paymentDate: dateFilter } : {}),
-    };
+    const [paidAggregate, { totalBalance, totalEmptiesBalance }] = await Promise.all([
+      prisma.payment.aggregate({
+        where: { userId, ...(startDate || endDate ? { paymentDate: dateFilter } : {}) },
+        _sum: { amountPaid: true },
+      }),
+      getPayerBalance(prisma, userId),
+    ]);
+    const totalPaid = Number(paidAggregate._sum.amountPaid || 0);
 
-    const aggregate = await prisma.payment.aggregate({
-      where,
-      _sum: { amountPaid: true, amountBalance: true, emptiesBal: true },
-    });
-
-    if (!aggregate._sum.amountPaid && !aggregate._sum.amountBalance) {
+    if (!totalPaid && !totalBalance && !totalEmptiesBalance) {
       return res.json({
         totalPaid: 0,
         totalBalance: 0,
@@ -393,10 +392,6 @@ router.get('/users/:id/summary', async (req, res) => {
         status: 'NO_PAYMENTS',
       });
     }
-
-    const totalPaid = Number(aggregate._sum.amountPaid || 0);
-    const totalBalance = Number(aggregate._sum.amountBalance || 0);
-    const totalEmptiesBalance = Number(aggregate._sum.emptiesBal || 0);
 
     const status =
       totalBalance > 0

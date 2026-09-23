@@ -1,8 +1,7 @@
 const EMPTIES_PRODUCTS = ['30cl', '20cl'];
 
-// Amount and empties still owed on an order once returns are netted out — the same
-// figures PATCH /api/payments recomputes.
-function calculateDue(items) {
+// Amount and empties still owed on an order once returns are netted out.
+export function calculateDue(items) {
   let amountDue = 0;
   let emptiesDue = 0;
 
@@ -16,88 +15,59 @@ function calculateDue(items) {
   return { amountDue, emptiesDue };
 }
 
-// Recomputes the running totals (totalAmountBal / totalEmptiesBal) on every payment of a
-// user: each row holds the sum of the balances of that user's payments up to and including
-// itself, in creation order, so the last row is the user's overall balance. Creating an order
-// sets its row this way; call this after anything that changes an earlier row's balance so
-// the rows after it don't go stale. Must run inside a transaction.
-export async function refreshRunningTotals(tx, userId) {
-  await tx.$executeRaw`
-    UPDATE "Payment" AS p
-    SET "totalAmountBal" = t."runningAmount",
-        "totalEmptiesBal" = t."runningEmpties"
-    FROM (
-      SELECT id,
-             SUM("amountBalance") OVER (ORDER BY id) AS "runningAmount",
-             SUM(COALESCE("emptiesBal", 0)) OVER (ORDER BY id) AS "runningEmpties"
-      FROM "Payment"
-      WHERE "userId" = ${userId}
-    ) AS t
-    WHERE p.id = t.id`;
-}
-
-// Re-derives an order's Payment row after the order (or its returns) changed. What was
-// already paid/received is kept; due and balance are recomputed, then the running totals of
-// the payer (and the previous payer, if it changed) are refreshed.
+// An order's Payment rows form a ledger: one row per payment actually received, in the
+// order they were recorded. Call this after anything that can change what's owed on an
+// order — a new or edited payment, an order edit, a return — to keep every row's stored
+// `amountDue`/`amountBalance` (and the empties equivalents) correct. `amountDue` is a
+// property of the order, so every row ends up with the same (current) due amount;
+// `amountBalance` is a running balance — what's still owed immediately after that row's
+// payment — so only the most recent row reflects the order's balance right now.
 //
-//   salesOrderId | purchaseOrderId  which order's payment to sync
-//   userId        optional — the payer, when it may have changed (sales order party swap)
-//   paymentDate   optional — new payment date (payments are dated with their order)
-//
-// Must run inside a transaction. Returns null when the order has no payer and no payment.
-export async function syncOrderPayment(tx, { salesOrderId, purchaseOrderId, userId, paymentDate }) {
+// Must run inside a transaction. No-ops (returns null) if the order has no Payment rows yet.
+export async function refreshOrderLedger(tx, { salesOrderId, purchaseOrderId }) {
   const isSales = salesOrderId !== undefined;
   const orderFilter = isSales ? { salesOrderId } : { purchaseOrderId };
+  const orderColumn = isSales ? 'salesOrderId' : 'purchaseOrderId';
+  const orderId = isSales ? salesOrderId : purchaseOrderId;
 
   const items = isSales
     ? await tx.salesOrderItem.findMany({ where: { salesOrderId }, include: { return: true } })
     : await tx.purchaseOrderItem.findMany({ where: { purchaseOrderId } });
   const { amountDue, emptiesDue } = calculateDue(items);
 
-  const current = await tx.payment.findFirst({ where: orderFilter });
-  const payerId = userId ?? current?.userId;
-  if (!payerId) return null;
+  // Lock this order's rows before recomputing, so a concurrent payment on the same order
+  // queues up instead of racing on the running balance.
+  await tx.$queryRawUnsafe(
+    `SELECT id FROM "Payment" WHERE "${orderColumn}" = $1 FOR UPDATE`,
+    orderId
+  );
 
-  // Lock the payer's payment rows (the old payer's too, if it changed) so concurrent edits
-  // queue up instead of racing on the totals. Locking in ascending id order keeps two
-  // swapping edits from deadlocking.
-  const affectedUserIds = [...new Set([current?.userId, payerId].filter(Boolean))].sort((a, b) => a - b);
-  for (const lockId of affectedUserIds) {
-    await tx.$queryRaw`SELECT id FROM "Payment" WHERE "userId" = ${lockId} FOR UPDATE`;
-  }
+  const hasRows = (await tx.payment.count({ where: orderFilter })) > 0;
+  if (!hasRows) return null;
 
-  // Re-read now that we hold the lock, so amountPaid/emptiesRec can't be stale.
-  const existing = await tx.payment.findFirst({ where: orderFilter });
+  await tx.$executeRawUnsafe(
+    `UPDATE "Payment" AS p
+     SET "amountDue" = $2,
+         "emptiesDue" = $3,
+         "amountBalance" = $2 - t."runningPaid",
+         "emptiesBal" = $3 - t."runningRec"
+     FROM (
+       SELECT id,
+              SUM("amountPaid") OVER (ORDER BY "paymentDate", id) AS "runningPaid",
+              SUM(COALESCE("emptiesRec", 0)) OVER (ORDER BY "paymentDate", id) AS "runningRec"
+       FROM "Payment"
+       WHERE "${orderColumn}" = $1
+     ) AS t
+     WHERE p.id = t.id`,
+    orderId, amountDue, emptiesDue
+  );
 
-  const amountPaid = Number(existing?.amountPaid ?? 0);
-  const emptiesRec = Number(existing?.emptiesRec ?? 0);
+  return tx.payment.findFirst({ where: orderFilter, orderBy: [{ paymentDate: 'desc' }, { id: 'desc' }] });
+}
 
-  const data = {
-    userId: payerId,
-    amountDue,
-    emptiesDue,
-    amountBalance: amountDue - amountPaid,
-    emptiesBal: emptiesDue - emptiesRec,
-    ...(paymentDate && { paymentDate }),
-  };
-
-  if (existing) {
-    await tx.payment.update({ where: { id: existing.id }, data });
-  } else {
-    await tx.payment.create({
-      data: {
-        ...data,
-        ...orderFilter,
-        paymentDate: paymentDate ?? new Date(),
-        amountPaid: 0,
-        emptiesRec: 0,
-      },
-    });
-  }
-
-  for (const affectedId of affectedUserIds) {
-    await refreshRunningTotals(tx, affectedId);
-  }
-
-  return tx.payment.findFirst({ where: orderFilter });
+// Moves every payment already recorded against a sales order to a different payer (used
+// when an order is reassigned from one customer to another, or one employee to another).
+// Must run inside a transaction.
+export async function reassignOrderPayer(tx, { salesOrderId, userId }) {
+  await tx.payment.updateMany({ where: { salesOrderId }, data: { userId } });
 }

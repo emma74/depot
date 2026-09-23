@@ -4,8 +4,12 @@ import FormField from '../../components/common/FormField';
 import Button from '../../components/common/Button';
 import ErrorMessage from '../../components/common/ErrorMessage';
 import DataTable from '../../components/common/DataTable';
-import PaymentEditModal from '../../components/payments/PaymentEditModal';
+import PaymentFormModal from '../../components/payments/PaymentFormModal';
 import { formatCurrency, formatDate } from '../../utils/format';
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 export default function PaymentListPage() {
   // --- Look up a user's payment history ---
@@ -34,35 +38,52 @@ export default function PaymentListPage() {
     runLookup();
   };
 
-  // --- Reconcile a payment against an order ---
+  // --- Record a new payment against an order ---
   const [orderKind, setOrderKind] = useState('salesOrderId');
   const [orderId, setOrderId] = useState('');
+  const [paymentDate, setPaymentDate] = useState(today());
   const [amountPaid, setAmountPaid] = useState('');
   const [emptiesRec, setEmptiesRec] = useState('');
+  const [checkDate, setCheckDate] = useState('');
   const [checkNumber, setCheckNumber] = useState('');
   const [loadNumber, setLoadNumber] = useState('');
   const [carNumber, setCarNumber] = useState('');
-  const [reconcileError, setReconcileError] = useState(null);
-  const [reconcileResult, setReconcileResult] = useState(null);
+  const [recordError, setRecordError] = useState(null);
+  const [recordResult, setRecordResult] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const handleReconcile = async (e) => {
+  const resetRecordForm = () => {
+    setOrderId('');
+    setPaymentDate(today());
+    setAmountPaid('');
+    setEmptiesRec('');
+    setCheckDate('');
+    setCheckNumber('');
+    setLoadNumber('');
+    setCarNumber('');
+  };
+
+  const handleRecord = async (e) => {
     e.preventDefault();
     setSubmitting(true);
-    setReconcileError(null);
-    setReconcileResult(null);
+    setRecordError(null);
+    setRecordResult(null);
     try {
-      const result = await paymentService.update({
+      await paymentService.create({
         [orderKind]: Number(orderId),
+        paymentDate,
         amountPaid: Number(amountPaid),
         emptiesRec: emptiesRec ? Number(emptiesRec) : 0,
-        checkNumber: checkNumber ? Number(checkNumber) : undefined,
-        loadNumber: loadNumber || undefined,
-        carNumber: carNumber || undefined,
+        checkDate: checkDate || null,
+        checkNumber: checkNumber ? Number(checkNumber) : null,
+        loadNumber: loadNumber || null,
+        carNumber: carNumber || null,
       });
-      setReconcileResult(result.message || 'Payment updated.');
+      setRecordResult('Payment recorded.');
+      resetRecordForm();
+      if (payments) runLookup();
     } catch (err) {
-      setReconcileError(err.response?.data?.error || err.message);
+      setRecordError(err.response?.data?.error || err.response?.data?.message || err.message);
     } finally {
       setSubmitting(false);
     }
@@ -75,21 +96,23 @@ export default function PaymentListPage() {
       </div>
 
       <div className="detail-section">
-        <h2>Reconcile a payment</h2>
-        {reconcileError && <ErrorMessage message={reconcileError} />}
-        {reconcileResult && <p style={{ color: 'var(--color-success)' }}>{reconcileResult}</p>}
-        <form onSubmit={handleReconcile}>
+        <h2>Record a payment</h2>
+        {recordError && <ErrorMessage message={recordError} />}
+        {recordResult && <p style={{ color: 'var(--color-success)' }}>{recordResult}</p>}
+        <form onSubmit={handleRecord}>
           <FormField as="select" label="Order type" name="orderKind" value={orderKind} onChange={(e) => setOrderKind(e.target.value)}>
             <option value="salesOrderId">Sales Order</option>
             <option value="purchaseOrderId">Purchase Order</option>
           </FormField>
           <FormField label="Order ID" name="orderId" type="number" value={orderId} onChange={(e) => setOrderId(e.target.value)} required />
+          <FormField label="Payment date" name="paymentDate" type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} required />
           <FormField label="Amount paid" name="amountPaid" type="number" step="0.01" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} required />
           <FormField label="Empties received" name="emptiesRec" type="number" step="0.001" value={emptiesRec} onChange={(e) => setEmptiesRec(e.target.value)} />
+          <FormField label="Check date" name="checkDate" type="date" value={checkDate} onChange={(e) => setCheckDate(e.target.value)} />
           <FormField label="Check number" name="checkNumber" type="number" value={checkNumber} onChange={(e) => setCheckNumber(e.target.value)} />
           <FormField label="Load number" name="loadNumber" value={loadNumber} onChange={(e) => setLoadNumber(e.target.value)} />
           <FormField label="Car number" name="carNumber" value={carNumber} onChange={(e) => setCarNumber(e.target.value)} />
-          <Button type="submit" disabled={submitting}>{submitting ? 'Saving…' : 'Reconcile Payment'}</Button>
+          <Button type="submit" disabled={submitting}>{submitting ? 'Saving…' : 'Record Payment'}</Button>
         </form>
       </div>
 
@@ -128,7 +151,7 @@ export default function PaymentListPage() {
       </div>
 
       {editingPayment && (
-        <PaymentEditModal
+        <PaymentFormModal
           payment={editingPayment}
           onClose={() => setEditingPayment(null)}
           onSaved={() => {

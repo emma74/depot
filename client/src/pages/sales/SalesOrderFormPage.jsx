@@ -104,15 +104,39 @@ export default function SalesOrderFormPage() {
       <form onSubmit={handleSubmit}>
         <FormField label="Order number" name="orderNumber" value={orderNumber} onChange={(e) => setOrderNumber(e.target.value)} required />
         <FormField label="Order date" name="orderDate" type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} required />
-        <FormField as="select" label="Order type" name="orderType" value={orderType} onChange={(e) => setOrderType(e.target.value)}>
+        <FormField
+          as="select"
+          label="Order type"
+          name="orderType"
+          value={orderType}
+          onChange={(e) => setOrderType(e.target.value)}
+          disabled={isEdit}
+          hint={isEdit ? "Set when the order was created — can't be changed" : undefined}
+        >
           <option value="CUSTOMER">Customer</option>
           <option value="EMPLOYEE">Employee</option>
         </FormField>
 
         {orderType === 'CUSTOMER' ? (
-          <FormField label="Customer ID" name="customerId" type="number" value={customerId} onChange={(e) => setCustomerId(e.target.value)} required />
+          <FormField
+            label="Customer ID"
+            name="customerId"
+            type="number"
+            value={customerId}
+            onChange={(e) => setCustomerId(e.target.value)}
+            required
+            hint={isEdit ? 'Changing this moves any payments already recorded to the new customer' : undefined}
+          />
         ) : (
-          <FormField label="Employee ID" name="employeeId" type="number" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} required />
+          <FormField
+            label="Employee ID"
+            name="employeeId"
+            type="number"
+            value={employeeId}
+            onChange={(e) => setEmployeeId(e.target.value)}
+            required
+            hint={isEdit ? 'Changing this moves any payments already recorded to the new employee' : undefined}
+          />
         )}
 
         <h2 style={{ fontSize: '1em', margin: '1.5rem 0 0.75rem' }}>Items</h2>

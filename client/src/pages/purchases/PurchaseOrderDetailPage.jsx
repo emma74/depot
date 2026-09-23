@@ -6,12 +6,13 @@ import DataTable from '../../components/common/DataTable';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import ErrorMessage from '../../components/common/ErrorMessage';
 import Button from '../../components/common/Button';
-import PaymentEditModal from '../../components/payments/PaymentEditModal';
+import PaymentFormModal from '../../components/payments/PaymentFormModal';
 import { formatCurrency, formatDate, formatQty } from '../../utils/format';
 
 export default function PurchaseOrderDetailPage() {
   const { id } = useParams();
   const { data: order, loading, error, reload } = useApi(() => purchaseOrderService.get(id), [id]);
+  const [addingPayment, setAddingPayment] = useState(false);
   const [editingPayment, setEditingPayment] = useState(null);
 
   if (loading) return <LoadingSpinner />;
@@ -48,7 +49,10 @@ export default function PurchaseOrderDetailPage() {
       </div>
 
       <div className="detail-section">
-        <h2>Payments</h2>
+        <div className="page-header">
+          <h2>Payments</h2>
+          <Button variant="secondary" onClick={() => setAddingPayment(true)}>+ Add Payment</Button>
+        </div>
         <DataTable
           columns={[
             { key: 'paymentDate', label: 'Date', render: (row) => formatDate(row.paymentDate) },
@@ -68,8 +72,18 @@ export default function PurchaseOrderDetailPage() {
         />
       </div>
 
+      {addingPayment && (
+        <PaymentFormModal
+          orderRef={{ purchaseOrderId: order.id }}
+          onClose={() => setAddingPayment(false)}
+          onSaved={() => {
+            setAddingPayment(false);
+            reload();
+          }}
+        />
+      )}
       {editingPayment && (
-        <PaymentEditModal
+        <PaymentFormModal
           payment={editingPayment}
           onClose={() => setEditingPayment(null)}
           onSaved={() => {

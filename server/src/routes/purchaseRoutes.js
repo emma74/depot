@@ -2,8 +2,7 @@ import express from 'express';
 import prisma from '../prismaClient.js';
 import { HttpError, sendError } from '../utils/errors.js';
 import { parseOrderItems, planItemChanges } from '../utils/orderItems.js';
-import { syncOrderPayment } from '../utils/orderPayment.js';
-//import { calculateSummary } from '../utils/calculateSummary.js';
+import { refreshOrderLedger } from '../utils/orderPayment.js';
 
 const router = express.Router();
 
@@ -39,37 +38,23 @@ router.post('/', async (req, res) => {
         include: { items: true }
       });
 
-      let amountDue = 0;
-      let emptiesDue = 0;
-      for (const item of items) {
-        amountDue += item.qty * item.unitPrice;
-        if (item.product === '30cl' || item.product === '20cl') {
-          emptiesDue += item.qty;
-        }
-      }
-
-      const aggregate = await tx.payment.aggregate({
-        where: { userId: Number(userId) },
-        _sum: { amountBalance: true, emptiesBal: true },
-      });
-      const prevAmountBal = Number(aggregate._sum.amountBalance || 0);
-      const prevEmptiesBal = Number(aggregate._sum.emptiesBal || 0);
-
+      // Opens this order's payment ledger with a $0-paid entry, so it shows up correctly
+      // in the vendor's balance (full amount owed, nothing paid yet) even before the first
+      // real payment. refreshOrderLedger fills in the real amountDue/amountBalance.
       await tx.payment.create({
         data: {
           paymentDate: new Date(invoiceDate),
           user: { connect: { id: Number(userId) } },
           purchaseOrder: { connect: { id: newOrder.id } },
-          amountDue,
+          amountDue: 0,
           amountPaid: 0,
-          amountBalance: amountDue,
-          emptiesDue,
+          amountBalance: 0,
+          emptiesDue: 0,
           emptiesRec: 0,
-          emptiesBal: emptiesDue,
-          totalAmountBal: prevAmountBal + amountDue,
-          totalEmptiesBal: prevEmptiesBal + emptiesDue,
+          emptiesBal: 0,
         },
       });
+      await refreshOrderLedger(tx, { purchaseOrderId: newOrder.id });
 
       return newOrder;
     });
@@ -125,7 +110,7 @@ router.get('/:id', async (req, res) => {
             empty: true
           }
         },
-        payments: true
+        payments: { orderBy: [{ paymentDate: 'asc' }, { id: 'asc' }] }
       }
     });
 
@@ -205,7 +190,7 @@ router.put('/:id', async (req, res) => {
         data: { invoiceNumber: number, invoiceDate: date },
       });
 
-      await syncOrderPayment(tx, { purchaseOrderId: orderId, paymentDate: date });
+      await refreshOrderLedger(tx, { purchaseOrderId: orderId });
 
       return tx.purchaseOrder.findUnique({
         where: { id: orderId },

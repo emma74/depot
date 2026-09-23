@@ -1,7 +1,7 @@
 import express from 'express';
 import prisma from '../prismaClient.js';
 import { HttpError, sendError } from '../utils/errors.js';
-import { syncOrderPayment } from '../utils/orderPayment.js';
+import { refreshOrderLedger } from '../utils/orderPayment.js';
 
 const router = express.Router();
 
@@ -38,14 +38,20 @@ router.post('/:id', async (req, res) => {
       });
     }
 
-    // Create return
-    const returnItem = await prisma.return.create({
-      data: {
-        salesOrderItemId,
-        qtyReturned: qty,
-        userId,
-        returnDate: new Date()
-      }
+    // Create the return, then re-derive the order's payment ledger — a return lowers
+    // what's owed, so every payment already recorded against this order needs its
+    // due/balance recomputed, the same as when a return is edited.
+    const returnItem = await prisma.$transaction(async (tx) => {
+      const created = await tx.return.create({
+        data: {
+          salesOrderItemId,
+          qtyReturned: qty,
+          userId,
+          returnDate: new Date()
+        }
+      });
+      await refreshOrderLedger(tx, { salesOrderId: orderId });
+      return created;
     });
 
     res.json(returnItem);
@@ -120,7 +126,7 @@ router.put('/:id', async (req, res) => {
         data: { qtyReturned: qty, ...(returnDate && { returnDate }) },
       });
 
-      await syncOrderPayment(tx, { salesOrderId: item.salesOrderId });
+      await refreshOrderLedger(tx, { salesOrderId: item.salesOrderId });
 
       return result;
     });
