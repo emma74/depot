@@ -38,6 +38,16 @@ export default function PaymentListPage() {
     runLookup();
   };
 
+  const handleDeletePayment = async (paymentId) => {
+    if (!window.confirm('Delete this payment?')) return;
+    try {
+      await paymentService.remove(paymentId);
+      runLookup();
+    } catch (err) {
+      window.alert(err.response?.data?.message || err.message);
+    }
+  };
+
   // --- Record a new payment against an order ---
   const [orderKind, setOrderKind] = useState('salesOrderId');
   const [orderId, setOrderId] = useState('');
@@ -140,7 +150,10 @@ export default function PaymentListPage() {
                 key: 'actions',
                 label: '',
                 render: (row) => (
-                  <Button variant="secondary" onClick={() => setEditingPayment(row)}>Edit</Button>
+                  <div style={{ display: 'flex', gap: 'var(--spacing-2)' }}>
+                    <Button variant="secondary" onClick={() => setEditingPayment(row)}>Edit</Button>
+                    <Button variant="danger" onClick={() => handleDeletePayment(row.id)}>Delete</Button>
+                  </div>
                 ),
               },
             ]}

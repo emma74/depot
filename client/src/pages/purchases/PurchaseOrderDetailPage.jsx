@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
+import { paymentService } from '../../services/paymentService';
 import DataTable from '../../components/common/DataTable';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import ErrorMessage from '../../components/common/ErrorMessage';
@@ -11,6 +12,7 @@ import { formatCurrency, formatDate, formatQty } from '../../utils/format';
 
 export default function PurchaseOrderDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { data: order, loading, error, reload } = useApi(() => purchaseOrderService.get(id), [id]);
   const [addingPayment, setAddingPayment] = useState(false);
   const [editingPayment, setEditingPayment] = useState(null);
@@ -19,13 +21,36 @@ export default function PurchaseOrderDetailPage() {
   if (error) return <ErrorMessage message={error} />;
   if (!order) return null;
 
+  const handleDelete = async () => {
+    if (!window.confirm('Delete this purchase order? This cannot be undone.')) return;
+    try {
+      await purchaseOrderService.remove(id);
+      navigate('/purchase-orders');
+    } catch (err) {
+      window.alert(err.response?.data?.message || err.message);
+    }
+  };
+
+  const handleDeletePayment = async (paymentId) => {
+    if (!window.confirm('Delete this payment?')) return;
+    try {
+      await paymentService.remove(paymentId);
+      reload();
+    } catch (err) {
+      window.alert(err.response?.data?.message || err.message);
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
         <h1>Invoice {order.invoiceNumber}</h1>
-        <Link to={`/purchase-orders/${order.id}/edit`}>
-          <Button variant="secondary">Edit</Button>
-        </Link>
+        <div style={{ display: 'flex', gap: 'var(--spacing-3)' }}>
+          <Link to={`/purchase-orders/${order.id}/edit`}>
+            <Button variant="secondary">Edit</Button>
+          </Link>
+          <Button variant="danger" onClick={handleDelete}>Delete</Button>
+        </div>
       </div>
 
       <div className="detail-section">
@@ -64,7 +89,10 @@ export default function PurchaseOrderDetailPage() {
               key: 'actions',
               label: '',
               render: (row) => (
-                <Button variant="secondary" onClick={() => setEditingPayment(row)}>Edit</Button>
+                <div style={{ display: 'flex', gap: 'var(--spacing-2)' }}>
+                  <Button variant="secondary" onClick={() => setEditingPayment(row)}>Edit</Button>
+                  <Button variant="danger" onClick={() => handleDeletePayment(row.id)}>Delete</Button>
+                </div>
               ),
             },
           ]}

@@ -137,4 +137,31 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// ==============================
+//  4. DELETE A RETURN
+// ==============================
+// Note: `:id` here is the return's own id, not an order id, same as UPDATE above.
+router.delete('/:id', async (req, res) => {
+  try {
+    const returnId = Number(req.params.id);
+    if (!Number.isInteger(returnId)) throw new HttpError(400, 'Invalid return id');
+
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.return.findUnique({
+        where: { id: returnId },
+        include: { salesOrderItem: true },
+      });
+      if (!existing) throw new HttpError(404, 'Return not found');
+
+      await tx.return.delete({ where: { id: returnId } });
+      // Undoing a return raises what's owed back up — recompute the order's ledger.
+      await refreshOrderLedger(tx, { salesOrderId: existing.salesOrderItem.salesOrderId });
+    });
+
+    res.json({ message: 'Return deleted successfully' });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 export default router;

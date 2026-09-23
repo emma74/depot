@@ -134,8 +134,9 @@ router.post('/', async (req, res) => {
 // ==============================
 //  2. EDIT A PAYMENT
 // ==============================
-// Edits one specific payment's own details. It can't be moved to a different order —
-// that isn't an edit, it's a mistaken entry; delete/re-enter is the path for that today.
+// Edits one specific payment's own details. It can't be moved to a different order — if it
+// was recorded against the wrong one entirely, delete it and record it again on the right
+// order (see DELETE below), rather than editing which order it belongs to.
 router.put('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -175,7 +176,56 @@ router.put('/:id', async (req, res) => {
 });
 
 // ==============================
-//  3. PAYMENT HISTORY FOR A USER
+//  3. DELETE A PAYMENT
+// ==============================
+// If this was the order's only payment row, a fresh $0 entry replaces it — an order needs
+// at least one Payment row to be counted correctly in its payer's/supplier's balance, and
+// deleting a payment should put the order back to "nothing paid", not make it vanish from
+// balance calculations entirely.
+router.delete('/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) throw new HttpError(400, 'Invalid payment id');
+
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.payment.findUnique({ where: { id } });
+      if (!existing) throw new HttpError(404, 'Payment not found');
+
+      const orderRef = existing.salesOrderId
+        ? { salesOrderId: existing.salesOrderId }
+        : { purchaseOrderId: existing.purchaseOrderId };
+
+      await tx.payment.delete({ where: { id } });
+
+      const remaining = await tx.payment.count({ where: orderRef });
+      if (remaining === 0) {
+        const userId = await resolveOrderPayer(tx, orderRef);
+        await tx.payment.create({
+          data: {
+            ...orderRef,
+            userId,
+            paymentDate: existing.paymentDate,
+            amountDue: 0,
+            amountPaid: 0,
+            amountBalance: 0,
+            emptiesDue: 0,
+            emptiesRec: 0,
+            emptiesBal: 0,
+          },
+        });
+      }
+
+      await refreshOrderLedger(tx, orderRef);
+    });
+
+    res.json({ message: 'Payment deleted successfully' });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// ==============================
+//  4. PAYMENT HISTORY FOR A USER
 // ==============================
 // Every payment recorded against any order this user is the payer on, most recent first —
 // a real transaction ledger now that a payment is never overwritten.

@@ -8,4 +8,5 @@ export const returnService = {
     apiClient.post(`/api/returns/${salesOrderId}`, data).then((res) => res.data),
   // `id` is the return's own id, not the sales order's
   update: (id, data) => apiClient.put(`/api/returns/${id}`, data).then((res) => res.data),
+  remove: (id) => apiClient.delete(`/api/returns/${id}`).then((res) => res.data),
 };

@@ -219,5 +219,47 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// ==============================
+//  5. DELETE ORDER
+// ==============================
+// Same reasoning as sales order delete: every order has a $0 opening ledger entry from
+// creation, so the guard checks whether any real money or empties have moved, not just
+// whether a Payment row exists.
+router.delete('/:id', async (req, res) => {
+  try {
+    const orderId = Number(req.params.id);
+    if (!Number.isInteger(orderId)) throw new HttpError(400, 'Invalid order id');
+
+    await prisma.$transaction(async (tx) => {
+      const order = await tx.purchaseOrder.findUnique({
+        where: { id: orderId },
+        include: {
+          payments: true,
+          items: { include: { empty: true } },
+        },
+      });
+      if (!order) throw new HttpError(404, 'Order not found');
+
+      const hasRealPayments = order.payments.some(
+        (p) => Number(p.amountPaid) > 0 || Number(p.emptiesRec || 0) > 0
+      );
+      if (hasRealPayments) throw new HttpError(400, 'Cannot delete an order with payments');
+
+      const hasEmpties = order.items.some((item) => item.empty.length > 0);
+      if (hasEmpties) throw new HttpError(400, 'Cannot delete an order with empties recorded');
+
+      // Payment rows aren't cascade-deleted with the order (they'd be orphaned with a null
+      // purchaseOrderId) — since they're confirmed all still $0, remove them explicitly.
+      // Items cascade automatically.
+      await tx.payment.deleteMany({ where: { purchaseOrderId: orderId } });
+      await tx.purchaseOrder.delete({ where: { id: orderId } });
+    });
+
+    res.json({ message: 'Order deleted successfully' });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 export default router
 

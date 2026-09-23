@@ -312,48 +312,43 @@ router.patch('/:id/status', async (req, res) => {
 // ==============================
 //  5. DELETE ORDER
 // ==============================
+// Every order with a payer has at least one Payment row from the moment it's created (the
+// $0 opening ledger entry) — so "block if any payment exists" would block every order.
+// The real question is whether any money or empties actually moved; a still-$0 opening row
+// isn't a reason to keep the order around.
 router.delete('/:id', async (req, res) => {
   try {
     const orderId = Number(req.params.id);
+    if (!Number.isInteger(orderId)) throw new HttpError(400, 'Invalid order id');
 
-    const order = await prisma.salesOrder.findUnique({
-      where: { id: orderId },
-      include: {
-        payments: true,
-        items: {
-          include: { return: true }
-        }
-      }
+    await prisma.$transaction(async (tx) => {
+      const order = await tx.salesOrder.findUnique({
+        where: { id: orderId },
+        include: {
+          payments: true,
+          items: { include: { return: true } },
+        },
+      });
+      if (!order) throw new HttpError(404, 'Order not found');
+
+      const hasRealPayments = order.payments.some(
+        (p) => Number(p.amountPaid) > 0 || Number(p.emptiesRec || 0) > 0
+      );
+      if (hasRealPayments) throw new HttpError(400, 'Cannot delete an order with payments');
+
+      const hasReturns = order.items.some((item) => item.return?.length > 0);
+      if (hasReturns) throw new HttpError(400, 'Cannot delete an order with returns');
+
+      // Payment rows aren't cascade-deleted with the order (they can outlive it, orphaned
+      // with a null salesOrderId) — since we've just confirmed they're all still $0, remove
+      // them explicitly rather than leave them behind pointing at nothing.
+      await tx.payment.deleteMany({ where: { salesOrderId: orderId } });
+      await tx.salesOrder.delete({ where: { id: orderId } });
     });
 
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
-
-    //Block deletion if payments exist
-    if (order.payments.length > 0) {
-      return res.status(400).json({
-        message: "Cannot delete order with payments"
-      });
-    }
-
-    //Block deletion if returns exist
-    const hasReturns = order.items.some(item => item.return?.length > 0);
-    if (hasReturns) {
-      return res.status(400).json({
-        message: "Cannot delete order with returns"
-      });
-    }
-
-    //Safe to delete
-    await prisma.salesOrder.delete({
-      where: { id: orderId }
-    });
-
-    res.json({ message: "Order deleted successfully" });
-
+    res.json({ message: 'Order deleted successfully' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 

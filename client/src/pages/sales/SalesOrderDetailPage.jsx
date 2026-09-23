@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useApi } from '../../hooks/useApi';
 import { salesOrderService } from '../../services/salesOrderService';
+import { paymentService } from '../../services/paymentService';
 import DataTable from '../../components/common/DataTable';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import ErrorMessage from '../../components/common/ErrorMessage';
@@ -36,6 +37,16 @@ export default function SalesOrderDetailPage() {
     try {
       await salesOrderService.remove(id);
       navigate('/sales-orders');
+    } catch (err) {
+      window.alert(err.response?.data?.message || err.message);
+    }
+  };
+
+  const handleDeletePayment = async (paymentId) => {
+    if (!window.confirm('Delete this payment?')) return;
+    try {
+      await paymentService.remove(paymentId);
+      reload();
     } catch (err) {
       window.alert(err.response?.data?.message || err.message);
     }
@@ -128,7 +139,10 @@ export default function SalesOrderDetailPage() {
                     key: 'actions',
                     label: '',
                     render: (row) => (
-                      <Button variant="secondary" onClick={() => setEditingPayment(row)}>Edit</Button>
+                      <div style={{ display: 'flex', gap: 'var(--spacing-2)' }}>
+                        <Button variant="secondary" onClick={() => setEditingPayment(row)}>Edit</Button>
+                        <Button variant="danger" onClick={() => handleDeletePayment(row.id)}>Delete</Button>
+                      </div>
                     ),
                   },
                 ]

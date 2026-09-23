@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useApi } from '../../hooks/useApi';
 import { salesOrderService } from '../../services/salesOrderService';
+import { returnService } from '../../services/returnService';
 import DataTable from '../../components/common/DataTable';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import ErrorMessage from '../../components/common/ErrorMessage';
@@ -37,6 +38,17 @@ export default function ReturnListPage() {
     (a, b) => new Date(b.returnDate) - new Date(a.returnDate)
   );
 
+  const handleDelete = async (e, returnId) => {
+    e.stopPropagation();
+    if (!window.confirm('Delete this return?')) return;
+    try {
+      await returnService.remove(returnId);
+      reload();
+    } catch (err) {
+      window.alert(err.response?.data?.message || err.message);
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -55,15 +67,18 @@ export default function ReturnListPage() {
                   key: 'actions',
                   label: '',
                   render: (row) => (
-                    <Button
-                      variant="secondary"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingReturn(row);
-                      }}
-                    >
-                      Edit
-                    </Button>
+                    <div style={{ display: 'flex', gap: 'var(--spacing-2)' }}>
+                      <Button
+                        variant="secondary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingReturn(row);
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button variant="danger" onClick={(e) => handleDelete(e, row.id)}>Delete</Button>
+                    </div>
                   ),
                 },
               ]
